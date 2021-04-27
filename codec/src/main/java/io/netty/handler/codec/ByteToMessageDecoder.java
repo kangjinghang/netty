@@ -75,7 +75,7 @@ import static java.lang.Integer.MAX_VALUE;
 public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter {
 
     /**
-     * Cumulate {@link ByteBuf}s by merge them into one {@link ByteBuf}'s, using memory copies.
+     * Cumulate {@link ByteBuf}s by merge them into one {@link ByteBuf}'s, using memory copies（内存复制）.
      */
     public static final Cumulator MERGE_CUMULATOR = new Cumulator() {
         @Override
@@ -94,8 +94,10 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     // - cumulation cannot be resized to accommodate the additional data
                     // - cumulation can be expanded with a reallocation operation to accommodate but the buffer is
                     //   assumed to be shared (e.g. refCnt() > 1) and the reallocation may not be safe.
+                    // 如果不够空间，就去扩容。先把空间搞够
                     return expandCumulation(alloc, cumulation, in);
                 }
+                // 然后把空间追加进去就行了
                 cumulation.writeBytes(in, in.readerIndex(), required);
                 in.readerIndex(in.writerIndex());
                 return cumulation;
@@ -131,6 +133,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 } else {
                     composite = alloc.compositeBuffer(Integer.MAX_VALUE).addFlattenedComponents(true, cumulation);
                 }
+                // 避免内存复制
                 composite.addFlattenedComponents(true, in);
                 in = null;
                 return composite;
@@ -272,6 +275,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             try {
                 first = cumulation == null;
                 cumulation = cumulator.cumulate(ctx.alloc(),
+                        // 是第一次读时，返回空的buffer，否则放到积累器中
                         first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
@@ -444,6 +448,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 }
 
                 int oldInputLength = in.readableBytes();
+                // decode 中时，不能执行完handler remove 清理操作。
+                // 那 decode 完之后，需要清理数据
                 decodeRemovalReentryProtection(ctx, in, out);
 
                 // Check if this handler was removed before continuing the loop.

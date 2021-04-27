@@ -107,6 +107,7 @@ public class WriteTimeoutHandler extends ChannelOutboundHandlerAdapter {
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         if (timeoutNanos > 0) {
             promise = promise.unvoid();
+            // 写的时候schedule一个task去检查是否完成了
             scheduleTimeout(ctx, promise);
         }
         ctx.write(msg, promise);

@@ -180,7 +180,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         private final Entry<AttributeKey<?>, Object>[] childAttrs;
         private final Runnable enableAutoReadTask;
 
-        ServerBootstrapAcceptor(
+        ServerBootstrapAcceptor( // 接收连接后的后续处理
                 final Channel channel, EventLoopGroup childGroup, ChannelHandler childHandler,
                 Entry<ChannelOption<?>, Object>[] childOptions, Entry<AttributeKey<?>, Object>[] childAttrs) {
             this.childGroup = childGroup;
@@ -208,6 +208,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
             child.pipeline().addLast(childHandler);
 
+            // 设置 childOptions
             setChannelOptions(child, childOptions, logger);
             setAttributes(child, childAttrs);
 

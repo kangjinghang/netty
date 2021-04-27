@@ -67,6 +67,7 @@ public final class NioChannelOption<T> extends ChannelOption<T> {
             return false;
         }
         try {
+            // JDK channel 调用
             channel.setOption(option.option, value);
             return true;
         } catch (IOException e) {
