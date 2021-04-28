@@ -15,11 +15,11 @@
  */
 package io.netty.channel;
 
-import static io.netty.util.internal.ObjectUtil.checkPositive;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.util.UncheckedBooleanSupplier;
+
+import static io.netty.util.internal.ObjectUtil.checkPositive;
 
 /**
  * Default implementation of {@link MaxMessagesRecvByteBufAllocator} which respects {@link ChannelConfig#isAutoRead()}
@@ -141,6 +141,10 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
         public boolean continueReading(UncheckedBooleanSupplier maybeMoreDataSupplier) {
             return config.isAutoRead() &&
                    (!respectMaybeMoreData || maybeMoreDataSupplier.get()) &&
+                    // respectMaybeMoreData = false，表明不'慎重'对待可能的更多数据，只要有数据，就一直读16次，读不到
+                    // 可能浪费一次系统call.
+                    // respectMaybeMoreData = true，默认选项，会判断有更多数据的可能性（maybeMoreDataSupplier.get()）
+                    // 但是这个判断可能不是所有情况都准，所以才加了respectMaybeMoreData
                    totalMessages < maxMessagePerRead &&
                    totalBytesRead > 0;
         }

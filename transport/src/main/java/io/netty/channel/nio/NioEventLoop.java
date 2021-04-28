@@ -432,6 +432,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     @Override
+    // 死循环，处理监听事件
     protected void run() {
         int selectCnt = 0;
         for (;;) {
@@ -578,6 +579,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKeys() {
         if (selectedKeys != null) {
+            // 不用JDK的selector.selectKeys()，性能更好（1%-2%），垃圾回收更少
             processSelectedKeysOptimized();
         } else {
             processSelectedKeysPlain(selector.selectedKeys());
@@ -594,8 +596,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     void cancel(SelectionKey key) {
+        // 没有特殊情况（配置so linger），下面这个cancel：其实没有"执行"，因为在关闭channel的时候执行过了
         key.cancel();
         cancelledKeys ++;
+        // 下面是优化：当处理一批事件时，发现很多连接都断了（默认256）
+        // 这个时候后面的事件可能就失效了，所以不妨select again下。
         if (cancelledKeys >= CLEANUP_INTERVAL) {
             cancelledKeys = 0;
             needsToSelectAgain = true;
@@ -648,7 +653,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
-
+            // 呼应与channel的register中的this：例如：selectKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
             final Object a = k.attachment();
 
             if (a instanceof AbstractNioChannel) {
@@ -715,6 +720,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
+            // 处理读请求（断开连接）或者接入连接
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
                 unsafe.read();
             }

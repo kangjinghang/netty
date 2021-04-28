@@ -121,7 +121,10 @@
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>${tcnative.artifactId}</artifactId>
+      <version>${tcnative.version}</version>
       <classifier>${tcnative.classifier}</classifier>
+      <scope>compile</scope>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>${conscrypt.groupId}</groupId>
@@ -194,6 +197,16 @@
             ${exampleClass}
           </commandlineArgs>
         </configuration>
+      </plugin>
+      <!-- Disable checkstyle -->
+      <plugin>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>check-style</id>
+            <phase>none</phase>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

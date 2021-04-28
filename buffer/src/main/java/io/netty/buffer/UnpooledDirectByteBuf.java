@@ -61,6 +61,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
+        // allocateDirect分配堆外内存
         setByteBuffer(allocateDirect(initialCapacity), false);
     }
 
@@ -101,6 +102,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
      * Allocate a new direct {@link ByteBuffer} with the given initialCapacity.
      */
     protected ByteBuffer allocateDirect(int initialCapacity) {
+        // 此处调用JDK的allocateDirect来分配堆外内存
         return ByteBuffer.allocateDirect(initialCapacity);
     }
 

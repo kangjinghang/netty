@@ -34,7 +34,7 @@ import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 /**
- * Light-weight object pool based on a thread-local stack.
+ * Light-weight object pool based on a thread-local stack.轻量级的内存池的实现
  *
  * @param <T> the type of the pooled object
  */
@@ -169,10 +169,12 @@ public abstract class Recycler<T> {
     @SuppressWarnings("unchecked")
     public final T get() {
         if (maxCapacityPerThread == 0) {
+            // 表明没有开启池化
             return newObject((Handle<T>) NOOP_HANDLE);
         }
         Stack<T> stack = threadLocal.get();
         DefaultHandle<T> handle = stack.pop();
+        // 试图从"池"中取出一个，没有就新建一个
         if (handle == null) {
             handle = stack.newHandle();
             handle.value = newObject(handle);
@@ -241,7 +243,7 @@ public abstract class Recycler<T> {
             if (lastRecycledId != recycleId || stack == null) {
                 throw new IllegalStateException("recycled already");
             }
-
+            // 释放用完的对象到池里面去
             stack.push(this);
         }
 
