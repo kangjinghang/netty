@@ -850,10 +850,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         public final void beginRead() {
             assertEventLoop();
 
-            if (!isActive()) {
-                return;
-            }
-
             try {
                 doBeginRead();
             } catch (final Exception e) {
