@@ -653,7 +653,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
-            // 呼应与channel的register中的this：例如：selectKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
+            // 呼应与channel的register中的this：
+            // 例如：selectKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
             final Object a = k.attachment();
 
             if (a instanceof AbstractNioChannel) {
