@@ -45,7 +45,7 @@ public class ObjectEncoder extends MessageToByteEncoder<Serializable> {
         ObjectOutputStream oout = null;
         try {
             bout.write(LENGTH_PLACEHOLDER);
-            oout = new CompactObjectOutputStream(bout);
+            oout = new CompactObjectOutputStream(bout); // Compact压缩
             oout.writeObject(msg);
             oout.flush();
         } finally {

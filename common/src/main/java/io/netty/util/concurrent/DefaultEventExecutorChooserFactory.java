@@ -53,6 +53,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // idx 和 数组长度-1 进行与操作（hashMap）
             return executors[idx.getAndIncrement() & executors.length - 1];
         }
     }
@@ -70,6 +71,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // idx递增，然后对数组长度取模
             return executors[(int) Math.abs(idx.getAndIncrement() % executors.length)];
         }
     }

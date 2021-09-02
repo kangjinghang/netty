@@ -70,6 +70,33 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
     }
 
     public NioEventLoopGroup(int nThreads, Executor executor) {
+        // 跨平台多路复用器
+        /* SelectorProvider
+         * public static SelectorProvider provider() {
+         *     synchronized (lock) {
+         *         if (provider != null)
+         *             return provider;
+         *         return AccessController.doPrivileged(
+         *             new PrivilegedAction<SelectorProvider>() {
+         *                 public SelectorProvider run() {
+         *                   	   // 如果环境变量中进行了设置则从环境变量加载，默认为false
+         *                         if (loadProviderFromProperty())
+         *                             return provider;
+         *                         // 走SPI机制，检查jar包的META-INF/services目录，默认为false
+         *                         if (loadProviderAsService())
+         *                             return provider;
+         *                   	   // 走到JDK的源码，根据不同的JDK（Windows/Linux/Mac OS）创建， Selector 在不同的平台下有不同的实现。
+         *                         // Windows：WindowsSelectorProvider
+         *                         // Unix：根据不同的操作系统选择不同的 Selector，
+         *                         // 例如 Linux 下是 EPollSelectorProvider，SunOS 下是 DevPollSelectorProvider
+         *                         // macOS：KQueueSelectorProvider
+         *                         provider = sun.nio.ch.DefaultSelectorProvider.create();
+         *                         return provider;
+         *                     }
+         *                 });
+         *     }
+         * }
+         */
         this(nThreads, executor, SelectorProvider.provider());
     }
 

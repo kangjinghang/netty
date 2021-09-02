@@ -59,6 +59,7 @@ import java.util.concurrent.TimeUnit;
  * ...
  * bootstrap.childHandler(new MyChannelInitializer());
  * ...
+ * // WriteTimeoutHandler 光看名字有点坑，并不是判断 write idle 的，而是判断写是否完成的
  * </pre>
  * @see ReadTimeoutHandler
  * @see IdleStateHandler
@@ -205,9 +206,9 @@ public class WriteTimeoutHandler extends ChannelOutboundHandlerAdapter {
             // Was not written yet so issue a write timeout
             // The promise itself will be failed with a ClosedChannelException once the close() was issued
             // See https://github.com/netty/netty/issues/2159
-            if (!promise.isDone()) {
+            if (!promise.isDone()) { // 判断不是是否空闲，而是这个 write 是否完成了
                 try {
-                    writeTimedOut(ctx);
+                    writeTimedOut(ctx); // 这个 task 会触发一个 timeout
                 } catch (Throwable t) {
                     ctx.fireExceptionCaught(t);
                 }

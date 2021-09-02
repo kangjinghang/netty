@@ -418,7 +418,9 @@ public class IdleStateHandler extends ChannelDuplexHandler {
 
             // 正常情况下false，即写空闲的判断中的写是指写成功，但是实际上，有可能遇到几种情况：
             // （1）写了，但是缓冲区满了，写不出去；（2）写了一个"大数据"，写确实在"动"，但是没有完成。
+            // 这两种情况都不算成功了，但是都是有"写的意图"
             // 所以这个参数，判断是否有"写的意图"，而不是判断"是否写成功"。
+
             // We can take this shortcut if the ChannelPromises that got passed into write()
             // appear to complete. It indicates "change" on message level and we simply assume
             // that there's change happening on byte level. If the user doesn't observe channel
@@ -440,7 +442,7 @@ public class IdleStateHandler extends ChannelDuplexHandler {
             if (buf != null) {
                 int messageHashCode = System.identityHashCode(buf.current());
                 long pendingWriteBytes = buf.totalPendingWriteBytes();
-
+                // 待发送的字节数 != 上一次待发送的字节数，说明肯定是在"动"，是有进度的
                 if (messageHashCode != lastMessageHashCode || pendingWriteBytes != lastPendingWriteBytes) {
                     lastMessageHashCode = messageHashCode;
                     lastPendingWriteBytes = pendingWriteBytes;

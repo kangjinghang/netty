@@ -48,5 +48,19 @@ class CompactObjectOutputStream extends ObjectOutputStream {
             // 但是也写了类的名字，这点在反序列化（用反射）时就会用到。当前包内的各种的Resolver来解析成字段
             writeUTF(desc.getName());
         }
+        /* 下面是JDK代码：JDK的序列化多写了下面一些信息
+         *
+         *   out.writeShort(fields.length);
+         *   for (int i = 0; i < fields.length; i++) {
+         *       ObjectStreamField f = fields[i];
+         *       out.writeByte(f.getTypeCode());
+         *       out.writeUTF(f.getName());
+         *       if (!f.isPrimitive()) {
+         *           out.writeTypeString(f.getTypeString());
+         *       }
+         *   }
+         *
+         * */
+
     }
 }
