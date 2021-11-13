@@ -15,14 +15,10 @@
  */
 package io.netty.handler.traffic;
 
-import static io.netty.util.internal.ObjectUtil.checkNotNullWithIAE;
-import static io.netty.util.internal.ObjectUtil.checkPositive;
-import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelConfig;
+import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.Attribute;
@@ -39,6 +35,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+
+import static io.netty.util.internal.ObjectUtil.*;
 
 /**
  * This implementation of the {@link AbstractTrafficShapingHandler} is for global
@@ -579,7 +577,7 @@ public class GlobalChannelTrafficShapingHandler extends AbstractTrafficShapingHa
         PerChannel perChannel = channelQueues.get(key);
         if (perChannel != null) {
             if (wait > maxTime && now + wait - perChannel.lastReadTimestamp > maxTime) {
-                wait = maxTime;
+                wait = maxTime; // 大于 maxTime，则直接置成 maxTime
             }
         }
         return wait;
@@ -694,6 +692,7 @@ public class GlobalChannelTrafficShapingHandler extends AbstractTrafficShapingHa
     protected void submitWrite(final ChannelHandlerContext ctx, final Object msg,
             final long size, final long writedelay, final long now,
             final ChannelPromise promise) {
+        // 步骤1：根据 channel 的 key，获取对应的存 delay 数据的 queue，没有则创建
         Channel channel = ctx.channel();
         Integer key = channel.hashCode();
         PerChannel perChannel = channelQueues.get(key);
@@ -707,6 +706,8 @@ public class GlobalChannelTrafficShapingHandler extends AbstractTrafficShapingHa
         boolean globalSizeExceeded = false;
         // write operations need synchronization
         synchronized (perChannel) {
+            // 步骤2：判断是否 delay，如果不需要且 queue 中无数据，直接发。
+            // 如果 queue 中有数据，即使不需要 delay，也要将数据入 queue，因为需要保持顺序。
             if (writedelay == 0 && perChannel.messagesQueue.isEmpty()) {
                 trafficCounter.bytesRealWriteFlowControl(size);
                 perChannel.channelTrafficCounter.bytesRealWriteFlowControl(size);
@@ -714,13 +715,19 @@ public class GlobalChannelTrafficShapingHandler extends AbstractTrafficShapingHa
                 perChannel.lastWriteTimestamp = now;
                 return;
             }
+            // 步骤3：预计 delay 时间过长，则最多等待15秒（maxTime值）
             if (delay > maxTime && now + delay - perChannel.lastWriteTimestamp > maxTime) {
                 delay = maxTime;
             }
+            // 步骤4：数据进入 queue
             newToSend = new ToSend(delay + now, msg, size, promise);
+            // 不管什么情况，都直接入 queue，所以可能会 OOM，所以后面要根据 queue 的情况，改变可写标记位
             perChannel.messagesQueue.addLast(newToSend);
             perChannel.queueSize += size;
+            // 上下2个 queueSize 不一样，上面少个 s，代表 channel 上的 queue，下面是 global 的
             queuesSize.addAndGet(size);
+            // 步骤5：判断是否 queue 的数据太多，如果是，设置写状态为不可写
+            // 判断 channel 的 queue size 是否超标，或者需要停的时间过长，设置 writable 为 false，提醒让上面的 handler 不要写了
             checkWriteSuspend(ctx, delay, perChannel.queueSize);
             if (queuesSize.get() > maxGlobalWriteSize) {
                 globalSizeExceeded = true;
@@ -729,6 +736,7 @@ public class GlobalChannelTrafficShapingHandler extends AbstractTrafficShapingHa
         if (globalSizeExceeded) {
             setUserDefinedWritability(ctx, false);
         }
+        // 步骤6：开始 schedule 一个 task 来等待 delay 的时间再来发。
         final long futureNow = newToSend.relativeTimeAction;
         final PerChannel forSchedule = perChannel;
         ctx.executor().schedule(new Runnable() {

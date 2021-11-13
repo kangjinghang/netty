@@ -129,18 +129,18 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     @Override
     void init(Channel channel) {
-        setChannelOptions(channel, newOptionsArray(), logger);
-        setAttributes(channel, newAttributesArray());
+        setChannelOptions(channel, newOptionsArray(), logger); // 初始化 option
+        setAttributes(channel, newAttributesArray()); // 初始化 channel 的属性
 
-        ChannelPipeline p = channel.pipeline();
-
+        ChannelPipeline p = channel.pipeline(); // 构建一个 pipeline
+        // 以上属性都是为了初始化 socketChannel 来使用的
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
         final Entry<ChannelOption<?>, Object>[] currentChildOptions = newOptionsArray(childOptions);
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = newAttributesArray(childAttrs);
-        //  ChannelInitializer一次性，初始化handler
+        // ChannelInitializer一次性，初始化handler
         // 负责添加一个ServerBootstrapAcceptor handler，添加完后，自己就移除了
-        // ServerBootstrapAcceptor handler：负责接收客户端连接创建连接后，对连接的初始化工作。
+        // ServerBootstrapAcceptor handler（Reactor模式的Acceptor）：负责接收客户端连接创建连接后，对连接的初始化工作。
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
@@ -204,14 +204,14 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         }
 
         @Override
-        @SuppressWarnings("unchecked")
+        @SuppressWarnings("unchecked") // AbstractNioMessageChannel.NioMessageUnsafe#read() 89行 ChannelPipeline#fireChannelRead() 传播过来触发的
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             final Channel child = (Channel) msg;
 
             child.pipeline().addLast(childHandler);
 
             setChannelOptions(child, childOptions, logger); // 设置 childOptions
-            setAttributes(child, childAttrs);
+            setAttributes(child, childAttrs); // 设置 child 属性
 
             try {
                 childGroup.register(child).addListener(new ChannelFutureListener() {

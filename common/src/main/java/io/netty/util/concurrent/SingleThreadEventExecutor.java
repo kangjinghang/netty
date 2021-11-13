@@ -370,6 +370,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ranAtLeastOne = false;
 
         do {
+            // 转义 scheduledTaskQueue -> taskQueue
             fetchedAll = fetchFromScheduledTaskQueue();
             if (runAllTasksFrom(taskQueue)) {
                 ranAtLeastOne = true;
@@ -377,7 +378,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
 
         if (ranAtLeastOne) {
-            lastExecutionTime = ScheduledFutureTask.nanoTime();
+            lastExecutionTime = ScheduledFutureTask.nanoTime(); // 标记最后执行时间，跟静默期比较
         }
         afterRunningAllTasks();
         return ranAtLeastOne;
@@ -643,7 +644,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 switch (oldState) {
                     case ST_NOT_STARTED:
                     case ST_STARTED:
-                        newState = ST_SHUTTING_DOWN;
+                        newState = ST_SHUTTING_DOWN; // 改变状态
                         break;
                     default:
                         newState = oldState;
@@ -750,7 +751,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (!inEventLoop()) {
             throw new IllegalStateException("must be invoked from an event loop");
         }
-
+        // 取消所有 scheduledTasks
         cancelScheduledTasks();
 
         if (gracefulShutdownStartTime == 0) {
@@ -824,7 +825,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean inEventLoop = inEventLoop();
         addTask(task);
         if (!inEventLoop) {
-            startThread();
+            startThread(); // 启动线程
             if (isShutdown()) {
                 boolean reject = false;
                 try {
@@ -937,11 +938,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
-        if (state == ST_NOT_STARTED) {
-            if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
+        if (state == ST_NOT_STARTED) {  // 判断状态，没有启动时会启动
+            if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) { // 更新状态，未启动 -> 启动
                 boolean success = false;
                 try {
-                    doStartThread();
+                    doStartThread(); // 启动线程的动作
                     success = true;
                 } finally {
                     if (!success) {
@@ -972,6 +973,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        // 执行线程池里的 task
         executor.execute(new Runnable() {
             @Override
             public void run() {

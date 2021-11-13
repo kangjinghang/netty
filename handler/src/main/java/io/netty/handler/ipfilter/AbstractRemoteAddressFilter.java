@@ -51,7 +51,7 @@ public abstract class AbstractRemoteAddressFilter<T extends SocketAddress> exten
             ctx.fireChannelActive();
         }
     }
-
+    // 判断连接的远程地址是否符合需求，不符合断掉
     private boolean handleNewChannel(ChannelHandlerContext ctx) throws Exception {
         @SuppressWarnings("unchecked")
         T remoteAddress = (T) ctx.channel().remoteAddress();
@@ -63,16 +63,16 @@ public abstract class AbstractRemoteAddressFilter<T extends SocketAddress> exten
 
         // No need to keep this handler in the pipeline anymore because the decision is going to be made now.
         // Also, this will prevent the subsequent events from being handled by this handler.
-        ctx.pipeline().remove(this);
+        ctx.pipeline().remove(this); // 只判断一次
 
-        if (accept(ctx, remoteAddress)) {
-            channelAccepted(ctx, remoteAddress);
-        } else {
+        if (accept(ctx, remoteAddress)) { // 判断是否接受这个地址
+            channelAccepted(ctx, remoteAddress); // 当前已有 channelAccepted 实现返回都是()，所以什么都不做
+        } else { // 当前已有 channelRejected 实际返回都是 null，所以执行"关闭"
             ChannelFuture rejectedFuture = channelRejected(ctx, remoteAddress);
             if (rejectedFuture != null) {
                 rejectedFuture.addListener(ChannelFutureListener.CLOSE);
             } else {
-                ctx.close();
+                ctx.close(); // 关闭连接
             }
         }
 

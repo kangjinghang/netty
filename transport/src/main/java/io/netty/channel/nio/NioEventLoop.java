@@ -579,7 +579,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKeys() {
         if (selectedKeys != null) {
-            // 不用JDK的selector.selectKeys()，性能更好（1%-2%），垃圾回收更少
+            // 不用 JDK 的 selector.selectKeys() ，性能更好（1%-2%），垃圾回收更少
             processSelectedKeysOptimized();
         } else {
             processSelectedKeysPlain(selector.selectedKeys());
@@ -653,9 +653,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
-            // 呼应与channel的register中的this：
+            // 呼应与 channel 的 register 中的 this ：
             // 例如：selectKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
-            final Object a = k.attachment();
+            final Object a = k.attachment(); // attachment 就是 serverSocketChannel
 
             if (a instanceof AbstractNioChannel) {
                 processSelectedKey(k, (AbstractNioChannel) a);
@@ -716,7 +716,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             // Process OP_WRITE first as we may be able to write some queued buffers and so free memory.
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
-                ch.unsafe().forceFlush();
+                ch.unsafe().forceFlush(); // 写事件的话就直接 flush
             }
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
@@ -757,7 +757,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void closeAll() {
-        selectAgain();
+        selectAgain(); // 这里的目标是为了去除 canceled 的 key
         Set<SelectionKey> keys = selector.keys();
         Collection<AbstractNioChannel> channels = new ArrayList<AbstractNioChannel>(keys.size());
         for (SelectionKey k: keys) {
@@ -772,7 +772,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
         }
 
-        for (AbstractNioChannel ch: channels) {
+        for (AbstractNioChannel ch: channels) { // 循环关闭 channel
             ch.unsafe().close(ch.unsafe().voidPromise());
         }
     }

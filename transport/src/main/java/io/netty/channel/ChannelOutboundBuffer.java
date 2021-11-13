@@ -92,7 +92,7 @@ public final class ChannelOutboundBuffer {
     private static final AtomicLongFieldUpdater<ChannelOutboundBuffer> TOTAL_PENDING_SIZE_UPDATER =
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
 
-    @SuppressWarnings("UnusedDeclaration")
+    @SuppressWarnings("UnusedDeclaration") // 统计待发送的字节数。不用AtomicLong -> volatile long + AtomicLongFieldUpdater
     private volatile long totalPendingSize;
 
     private static final AtomicIntegerFieldUpdater<ChannelOutboundBuffer> UNWRITABLE_UPDATER =
@@ -119,7 +119,7 @@ public final class ChannelOutboundBuffer {
             Entry tail = tailEntry;
             tail.next = entry;
         }
-        tailEntry = entry;
+        tailEntry = entry; // 追加到队尾
         if (unflushedEntry == null) {
             unflushedEntry = entry;
         }
@@ -141,7 +141,7 @@ public final class ChannelOutboundBuffer {
         Entry entry = unflushedEntry;
         if (entry != null) {
             if (flushedEntry == null) {
-                // there is no flushedEntry yet, so start with the entry
+                // there is no flushedEntry yet, so start with the entry，unflushedEntry 数据转换为 flushedEntry
                 flushedEntry = entry;
             }
             do {
@@ -173,7 +173,7 @@ public final class ChannelOutboundBuffer {
         }
 
         long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, size);
-        // 判断待发送的数据的size是否高于高水位线
+        // 判断待发送的数据的 size 是否高于高水位线，超过的话，状态变为不可写状态，用户可以判断是不是可以写，来决定到底要不要写
         if (newWriteBufferSize > channel.config().getWriteBufferHighWaterMark()) {
             setUnwritable(invokeLater);
         }
@@ -350,12 +350,12 @@ public final class ChannelOutboundBuffer {
                     progress(readableBytes);
                     writtenBytes -= readableBytes;
                 }
-                remove();
+                remove(); // 已经写完了，就移除掉
             } else { // readableBytes > writtenBytes
                 // 尚未写完整
                 if (writtenBytes != 0) {
                     buf.readerIndex(readerIndex + (int) writtenBytes);
-                    progress(writtenBytes);
+                    progress(writtenBytes); // 标记一下进度
                 }
                 break;
             }

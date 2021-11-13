@@ -267,14 +267,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         validate();
         return doBind(ObjectUtil.checkNotNull(localAddress, "localAddress"));
     }
-
+    // 3步，第一步创建，第二步 init ，第三步 register 到selector
     private ChannelFuture doBind(final SocketAddress localAddress) {
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
-        // 不能肯定register完成，因为register是丢到nio event loop里面执行去了
+        // 不能肯定register完成，因为register是丢到 nio event loop 里面执行去了
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
@@ -283,7 +283,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
             final PendingRegistrationPromise promise = new PendingRegistrationPromise(channel);
-            // 等着register完成来通知再执行bind
+            // 不能完成的话，则封装成一个 task，等着 register 完成来通知再执行 bind
             regFuture.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
@@ -308,9 +308,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
-            // 反射加工厂创建channel
+            // 反射加工厂创建channel，比如 nioServerSocketChannel
             channel = channelFactory.newChannel();
-            init(channel);
+            init(channel); // 初始化
         } catch (Throwable t) {
             if (channel != null) {
                 // channel can be null if newChannel crashed (eg SocketException("too many open files"))
@@ -321,7 +321,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
-
+        // 开始 register
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {

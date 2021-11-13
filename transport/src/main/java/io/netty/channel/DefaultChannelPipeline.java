@@ -1362,7 +1362,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             // 实际上就是注册OP_ACCEPT/OP_READ事件：创建连接或者读事件
             unsafe.beginRead();
         }
-
+        // headContext write msg
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
             unsafe.write(msg, promise);
@@ -1408,7 +1408,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            ctx.fireChannelRead(msg);
+            ctx.fireChannelRead(msg); // 在 pipeline 上传播
         }
 
         @Override

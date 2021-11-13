@@ -391,9 +391,9 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                 return;
             }
 
-            // Ensure the pending writes are made of ByteBufs only.
+            // Ensure the pending writes are made of ByteBufs only. 尽量想多写点数据
             int maxBytesPerGatheringWrite = ((NioSocketChannelConfig) config).getMaxBytesPerGatheringWrite();
-            // 最多返回1024个数据，总的size尽量不超过maxBytesPerGatheringWrite
+            // 最多返回1024个数据，总的 size 尽量不超过 maxBytesPerGatheringWrite，数据组装成 nioBuffers
             ByteBuffer[] nioBuffers = in.nioBuffers(1024, maxBytesPerGatheringWrite);
             int nioBufferCnt = in.nioBufferCount();
 
@@ -411,14 +411,14 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     ByteBuffer buffer = nioBuffers[0];
                     int attemptedBytes = buffer.remaining();
                     final int localWrittenBytes = ch.write(buffer);
-                    if (localWrittenBytes <= 0) {
+                    if (localWrittenBytes <= 0) { // <=0 说明我们写不进去数据了，会注册一个 opWrite 事件，让能写进去的时候再通知我们来写
                         incompleteWrite(true);
                         return;
                     }
                     adjustMaxBytesPerGatheringWrite(attemptedBytes, localWrittenBytes, maxBytesPerGatheringWrite);
-                    // 从ChannelOutboundBuffer中移除已经写出的数据
+                    // 从 ChannelOutboundBuffer 中移除已经写出的数据
                     in.removeBytes(localWrittenBytes);
-                    --writeSpinCount;
+                    --writeSpinCount; // 减少写的次数
                     break;
                 }
                 default: {
@@ -441,7 +441,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                 }
             }
         } while (writeSpinCount > 0);
-        // 写了16次数据，还是没有写完，直接schedule一个新的flush task出来，而不是注册写事件
+        // 写了16次数据，还是没有写完，直接 schedule 一个新的 flush task 出来，而不是注册写事件
         incompleteWrite(writeSpinCount < 0);
     }
 
@@ -459,8 +459,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     // because we try to read or write until the actual close happens which may be later due
                     // SO_LINGER handling.
                     // See https://github.com/netty/netty/issues/4449
-                    // 需要逗留到数据收发完成或者设置的时间，所以提交到另外的Executor中执行
-                    // 提前deregister掉，逗留期不接受新的数据了
+                    // 需要逗留到数据收发完成或者设置的时间，所以提交到另外的 Executor 中执行
+                    // 提前 deregister 掉，逗留期不接受新的数据了
                     // deregister 包含 selection key 的 cancel 的原因之一。
                     doDeregister();
                     return GlobalEventExecutor.INSTANCE;

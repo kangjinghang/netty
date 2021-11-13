@@ -68,7 +68,7 @@ public final class NativeLibraryLoader {
 
             WORKDIR = f;
             logger.debug("-Dio.netty.native.workdir: " + WORKDIR);
-        } else {
+        } else { // 没有配置 io.netty.native.workdir，就取 -Dio.netty.tmpdir
             WORKDIR = PlatformDependent.tmpdir();
             logger.debug("-Dio.netty.native.workdir: " + WORKDIR + " (io.netty.tmpdir)");
         }
@@ -132,7 +132,7 @@ public final class NativeLibraryLoader {
         String name = packagePrefix + originalName;
         List<Throwable> suppressed = new ArrayList<Throwable>();
         try {
-            // first try to load from java.library.path
+            // first try to load from java.library.path 相对路径加载
             loadLibrary(loader, name, false);
             return;
         } catch (Throwable ex) {
@@ -153,7 +153,7 @@ public final class NativeLibraryLoader {
         }
         try {
             if (url == null) {
-                if (PlatformDependent.isOsx()) {
+                if (PlatformDependent.isOsx()) { // mac 系统
                     String fileName = path.endsWith(".jnilib") ? NATIVE_RESOURCE_HOME + "lib" + name + ".dynlib" :
                             NATIVE_RESOURCE_HOME + "lib" + name + ".jnilib";
                     if (loader == null) {
@@ -166,7 +166,7 @@ public final class NativeLibraryLoader {
                         ThrowableUtil.addSuppressedAndClear(fnf, suppressed);
                         throw fnf;
                     }
-                } else {
+                } else { // linux 等系统下，不尝试再找了，直接报错
                     FileNotFoundException fnf = new FileNotFoundException(path);
                     ThrowableUtil.addSuppressedAndClear(fnf, suppressed);
                     throw fnf;
@@ -176,11 +176,11 @@ public final class NativeLibraryLoader {
             int index = libname.lastIndexOf('.');
             String prefix = libname.substring(0, index);
             String suffix = libname.substring(index);
-
+            // 创建临时文件
             tmpFile = PlatformDependent.createTempFile(prefix, suffix, WORKDIR);
             in = url.openStream();
             out = new FileOutputStream(tmpFile);
-
+            // 把 META-INF/native/ 下的库复制成临时文件
             if (shouldShadedLibraryIdBePatched(packagePrefix)) {
                 patchShadedLibraryId(in, out, originalName, name);
             } else {
@@ -197,11 +197,11 @@ public final class NativeLibraryLoader {
             // because otherwise Windows will refuse to load it when it's in use by other process.
             closeQuietly(out);
             out = null;
-            loadLibrary(loader, tmpFile.getPath(), true);
+            loadLibrary(loader, tmpFile.getPath(), true); // 绝对路径加载
         } catch (UnsatisfiedLinkError e) {
             try {
                 if (tmpFile != null && tmpFile.isFile() && tmpFile.canRead() &&
-                    !NoexecVolumeDetector.canExecuteExecutable(tmpFile)) {
+                    !NoexecVolumeDetector.canExecuteExecutable(tmpFile)) { // 没有可执行权限
                     // Pass "io.netty.native.workdir" as an argument to allow shading tools to see
                     // the string. Since this is printed out to users to tell them what to do next,
                     // we want the value to be correct even when shading.
@@ -228,6 +228,7 @@ public final class NativeLibraryLoader {
             // After we load the library it is safe to delete the file.
             // We delete the file immediately to free up resources as soon as possible,
             // and if this fails fallback to deleting on JVM exit.
+            // 删掉临时文件，删不掉，JVM关闭的时候，再删，取决于 "-Dio.netty.native.deleteLibAfterLoading"
             if (tmpFile != null && (!DELETE_NATIVE_LIB_AFTER_LOADING || !tmpFile.delete())) {
                 tmpFile.deleteOnExit();
             }
@@ -372,7 +373,7 @@ public final class NativeLibraryLoader {
             public Object run() {
                 try {
                     // Invoke the helper to load the native library, if succeed, then the native
-                    // library belong to the specified ClassLoader.
+                    // library belong to the specified ClassLoader. 反射
                     Method method = helper.getMethod("loadLibrary", String.class, boolean.class);
                     method.setAccessible(true);
                     return method.invoke(null, name, absolute);

@@ -39,21 +39,21 @@ public abstract class InternalLoggerFactory {
 
     @SuppressWarnings("UnusedCatchParameter")
     private static InternalLoggerFactory newDefaultFactory(String name) {
-        InternalLoggerFactory f = useSlf4JLoggerFactory(name);
+        InternalLoggerFactory f = useSlf4JLoggerFactory(name); // 尝试使用 slf4j
         if (f != null) {
             return f;
         }
-
+        // 尝试使用 log4j2
         f = useLog4J2LoggerFactory(name);
         if (f != null) {
             return f;
         }
-
+        // 尝试使用 log4j
         f = useLog4JLoggerFactory(name);
         if (f != null) {
             return f;
         }
-
+        // 使用 JDK logger
         return useJdkLoggerFactory(name);
     }
 

@@ -15,8 +15,6 @@
  */
 package io.netty.handler.traffic;
 
-import static io.netty.util.internal.ObjectUtil.checkNotNull;
-import static io.netty.util.internal.ObjectUtil.checkNotNullWithIAE;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -24,6 +22,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+
+import static io.netty.util.internal.ObjectUtil.checkNotNull;
+import static io.netty.util.internal.ObjectUtil.checkNotNullWithIAE;
 
 
 /**
@@ -187,7 +188,7 @@ public class TrafficCounter {
             return;
         }
         lastTime.set(milliSecondFromNano());
-        long localCheckInterval = checkInterval.get();
+        long localCheckInterval = checkInterval.get(); // 默认 1 s，固定窗口的方式，而不是令牌桶或者滑动窗口那种
         // if executor is null, it means it is piloted by a GlobalChannelTrafficCounter, so no executor
         if (localCheckInterval > 0 && executor != null) {
             monitorActive = true;
@@ -279,7 +280,7 @@ public class TrafficCounter {
             String name, long checkInterval) {
         this.name = checkNotNull(name, "name");
         this.trafficShapingHandler = checkNotNullWithIAE(trafficShapingHandler, "trafficShapingHandler");
-        this.executor = executor;
+        this.executor = executor; // 执行 TrafficCounter 的实际操作者
 
         init(checkInterval);
     }

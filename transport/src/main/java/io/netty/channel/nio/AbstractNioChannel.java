@@ -376,7 +376,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     protected void doRegister() throws Exception {
         boolean selected = false;
         for (;;) {
-            try {
+            try { // 调用 JDK 的 API，将 channel 注册到 nioEventLoop 里绑定的 selector ，ops = 0 ，
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {
@@ -408,12 +408,12 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
 
         readPending = true;
-
+        // 获取前面监听的 ops = 0，
         final int interestOps = selectionKey.interestOps();
         // 假设之前没有监听readInterestOp，则监听readInterestOp
         if ((interestOps & readInterestOp) == 0) {
             logger.info("interest ops：{}", readInterestOp);
-            selectionKey.interestOps(interestOps | readInterestOp);
+            selectionKey.interestOps(interestOps | readInterestOp); // 真正的注册 interestOps，做好连接的准备
         }
     }
 

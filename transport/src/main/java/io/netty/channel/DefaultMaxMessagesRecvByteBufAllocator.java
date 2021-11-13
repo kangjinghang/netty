@@ -93,7 +93,7 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
         private int lastBytesRead;
         private final boolean respectMaybeMoreData = DefaultMaxMessagesRecvByteBufAllocator.this.respectMaybeMoreData;
         private final UncheckedBooleanSupplier defaultMaybeMoreSupplier = new UncheckedBooleanSupplier() {
-            @Override
+            @Override // 是不是"满载而归"，不是的话就连续读，比较贪心的一种做法
             public boolean get() {
                 return attemptedBytesRead == lastBytesRead;
             }

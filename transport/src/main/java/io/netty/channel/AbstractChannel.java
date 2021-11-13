@@ -475,12 +475,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             AbstractChannel.this.eventLoop = eventLoop;
-
+            // 判断自己的线程（currentThread）是不是 nioEventLoop 里的线程，比如注册的时候，currentThread 是 main thead
             if (eventLoop.inEventLoop()) {
                 register0(promise);
             } else {
                 try {
-                    eventLoop.execute(new Runnable() {
+                    eventLoop.execute(new Runnable() { // 封装成一个 task 放到 eventLoop 中
                         @Override
                         public void run() {
                             register0(promise);
@@ -517,6 +517,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
+                // server socket 的注册不会走进下面的 if，server socket 接受连接创建的 socket 可以走进去，因为 accept 后就 active 了
                 if (isActive()) {
                     if (firstRegistration) {
                         pipeline.fireChannelActive();
@@ -565,7 +566,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 closeIfClosed();
                 return;
             }
-
+            // 绑定后，才是开始激活
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
@@ -718,7 +719,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             final boolean wasActive = isActive();
             final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
-            // 不接受消息x
+            // 不接受消息
             this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
             Executor closeExecutor = prepareToClose();
             if (closeExecutor != null) {
@@ -830,7 +831,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         logger.warn("Unexpected exception occurred while deregistering a channel.", t);
                     } finally {
                         if (fireChannelInactive) {
-                            pipeline.fireChannelInactive();
+                            pipeline.fireChannelInactive(); // channelInactive
                         }
                         // Some transports like local and AIO does not allow the deregistration of
                         // an open channel.  Their doDeregister() calls close(). Consequently,
@@ -838,7 +839,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         // if it was registered.
                         if (registered) {
                             registered = false;
-                            pipeline.fireChannelUnregistered();
+                            pipeline.fireChannelUnregistered(); // channelUnregistered
                         }
                         safeSetSuccess(promise);
                     }
@@ -868,7 +869,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             assertEventLoop();
 
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
-            // 下面的判断，是判断是否channel已经关闭了
+            // 下面的判断，是判断是否 channel 已经关闭了
             if (outboundBuffer == null) {
                 try {
                     // release message now to prevent resource-leak
@@ -899,7 +900,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 }
                 return;
             }
-
+            // 消息放到 buf 里面
             outboundBuffer.addMessage(msg, size, promise);
         }
 
@@ -908,7 +909,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             assertEventLoop();
 
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
-            if (outboundBuffer == null) {
+            if (outboundBuffer == null) { // outboundBuffer == null 表明 channel 关闭了
                 return;
             }
 

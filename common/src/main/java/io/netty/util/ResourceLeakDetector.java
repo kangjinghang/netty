@@ -56,7 +56,7 @@ public class ResourceLeakDetector<T> {
     static final int SAMPLING_INTERVAL;
 
     /**
-     * Represents the level of resource leak detection.
+     * Represents the level of resource leak detection. 要不要开启内存泄漏检测
      */
     public enum Level {
         /**
@@ -65,17 +65,17 @@ public class ResourceLeakDetector<T> {
         DISABLED,
         /**
          * Enables simplistic sampling resource leak detection which reports there is a leak or not,
-         * at the cost of small overhead (default).
+         * at the cost of small overhead (default).只是告诉有没有泄漏，不会告诉内存泄漏的位置
          */
         SIMPLE,
         /**
          * Enables advanced sampling resource leak detection which reports where the leaked object was accessed
-         * recently at the cost of high overhead.
+         * recently at the cost of high overhead.记录内存泄漏可能的位置，但是只跟踪一部分对象，采样的方式
          */
         ADVANCED,
         /**
          * Enables paranoid resource leak detection which reports where the leaked object was accessed recently,
-         * at the cost of the highest possible overhead (for testing purposes only).
+         * at the cost of the highest possible overhead (for testing purposes only).每个对象都会跟踪
          */
         PARANOID;
 
@@ -237,7 +237,7 @@ public class ResourceLeakDetector<T> {
     /**
      * Creates a new {@link ResourceLeakTracker} which is expected to be closed via
      * {@link ResourceLeakTracker#close(Object)} when the related resource is deallocated.
-     *
+     * new byteBuf 的时候就会调用此方法
      * @return the {@link ResourceLeakTracker} or {@code null}
      */
     @SuppressWarnings("unchecked")
@@ -253,8 +253,8 @@ public class ResourceLeakDetector<T> {
         }
 
         if (level.ordinal() < Level.PARANOID.ordinal()) {
-            if ((PlatformDependent.threadLocalRandom().nextInt(samplingInterval)) == 0) {
-                reportLeak();
+            if ((PlatformDependent.threadLocalRandom().nextInt(samplingInterval)) == 0) { // 不是每次都track，1/128
+                reportLeak(); // 不是周期性的，在创建 byteBuf 的时候顺便检测一下
                 return new DefaultResourceLeak(obj, refQueue, allLeaks);
             }
             return null;
@@ -290,16 +290,16 @@ public class ResourceLeakDetector<T> {
         }
 
         // Detect and report previous leaks.
-        for (;;) {
+        for (;;) { // 从 GC 时被放进小本本 refQueue 里遍历元素
             DefaultResourceLeak ref = (DefaultResourceLeak) refQueue.poll();
             if (ref == null) {
                 break;
             }
-
-            if (!ref.dispose()) {
+            // 判断内存泄漏的关键，如果 ref 还在 allLeaks，说明引用计数没有被正确的释放到0，发生了内存泄漏
+            if (!ref.dispose()) { // 不存在，则直接 continue
                 continue;
             }
-
+            // refQueue 记录内存泄漏的小本本，存在的话就 report
             String records = ref.toString();
             if (reportedLeaks.add(records)) {
                 if (records.isEmpty()) {
@@ -368,7 +368,7 @@ public class ResourceLeakDetector<T> {
                 Object referent,
                 ReferenceQueue<Object> refQueue,
                 Set<DefaultResourceLeak<?>> allLeaks) {
-            super(referent, refQueue);
+            super(referent, refQueue); // 如果发生 GC，会记录到 refQueue
 
             assert referent != null;
 
@@ -376,7 +376,7 @@ public class ResourceLeakDetector<T> {
             // It's important that we not store a reference to the referent as this would disallow it from
             // be collected via the WeakReference.
             trackedHash = System.identityHashCode(referent);
-            allLeaks.add(this);
+            allLeaks.add(this); // 创建弱引用对象的时候放进 allLeaks
             // Create a new Record so we always have the creation stacktrace included.
             headUpdater.set(this, new TraceRecord(TraceRecord.BOTTOM));
             this.allLeaks = allLeaks;
@@ -448,13 +448,13 @@ public class ResourceLeakDetector<T> {
         }
 
         boolean dispose() {
-            clear();
-            return allLeaks.remove(this);
+            clear(); // 返回 true 的话，说明 allLeaks 含有 ref
+            return allLeaks.remove(this); // 判断 allLeaks 里有没有在被 GC 的时候记录的小本本上的每个元素，在这个列表，说明 GC 后仍然存在引用，可能内存泄漏了
         }
 
         @Override
         public boolean close() {
-            if (allLeaks.remove(this)) {
+            if (allLeaks.remove(this)) { // 引用计数一直减1 减1，直到为0的时候会移除
                 // Call clear so the reference is not even enqueued.
                 clear();
                 headUpdater.set(this, null);
@@ -586,7 +586,7 @@ public class ResourceLeakDetector<T> {
             }
         } while (!excludedMethods.compareAndSet(oldMethods, newMethods));
     }
-
+    // 继承 Throwable，记录堆栈信息
     private static class TraceRecord extends Throwable {
         private static final long serialVersionUID = 6065153674892850720L;
 

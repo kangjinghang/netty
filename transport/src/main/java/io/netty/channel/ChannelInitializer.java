@@ -47,7 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * ...
  * </pre>
  * Be aware that this class is marked as {@link Sharable} and so the implementation must be safe to be re-used.
- *
+ * 像一个中介，把我们的 handler 添加到 pipeline 中，当添加完成后，会把自己移除掉
  * @param <C>   A sub-type of {@link Channel}
  */
 @Sharable

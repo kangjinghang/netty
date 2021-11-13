@@ -31,6 +31,7 @@ import java.util.List;
 
 /**
  * {@link AbstractNioChannel} base class for {@link Channel}s that operate on messages.
+ * nio server socket channel 的父类
  */
 public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     boolean inputShutdown;
@@ -76,7 +77,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 try {
                     do {
-                        int localRead = doReadMessages(readBuf);
+                        int localRead = doReadMessages(readBuf); // do
                         if (localRead == 0) {
                             break;
                         }
@@ -85,7 +86,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                             break;
                         }
 
-                        allocHandle.incMessagesRead(localRead);
+                        allocHandle.incMessagesRead(localRead); // 记录下创建的次数
                     } while (continueReading(allocHandle));
                 } catch (Throwable t) {
                     exception = t;
@@ -94,6 +95,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
+                    // 创建的结果（socketChannel）通过 fireChannelRead 传播出去了，就是各种 handler 的串行执行
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
                 readBuf.clear();
