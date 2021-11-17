@@ -73,7 +73,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
-
+    // 普通任务队列
     private final Queue<Runnable> taskQueue;
 
     private volatile Thread thread;
@@ -274,11 +274,12 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
         }
     }
-
+    // 从scheduledTaskQueue转移定时任务到taskQueue(mpsc queue)
     private boolean fetchFromScheduledTaskQueue() {
         if (scheduledTaskQueue == null || scheduledTaskQueue.isEmpty()) {
             return true;
         }
+        // nanoTime为当前时间(其实是当前纳秒减去"ScheduledFutureTask"类被加载时的纳秒时间数，)。
         long nanoTime = AbstractScheduledEventExecutor.nanoTime();
         for (;;) {
             Runnable scheduledTask = pollScheduledTask(nanoTime);
@@ -287,6 +288,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
             if (!taskQueue.offer(scheduledTask)) {
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
+                // 当taskQueue无法offer的时候，需要把从scheduledTaskQueue里面取出来的任务重新添加回去。
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
             }
@@ -370,7 +372,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ranAtLeastOne = false;
 
         do {
-            // 转义 scheduledTaskQueue -> taskQueue
+            // 转移task，从 scheduledTaskQueue -> 到taskQueue
             fetchedAll = fetchFromScheduledTaskQueue();
             if (runAllTasksFrom(taskQueue)) {
                 ranAtLeastOne = true;
@@ -456,23 +458,27 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
      */
     protected boolean runAllTasks(long timeoutNanos) {
+        // 1.从定时任务队列scheduledTaskQueue转移定时任务到普通任务队列taskQueue中去(mpsc queue)
         fetchFromScheduledTaskQueue();
         Runnable task = pollTask();
         if (task == null) {
             afterRunningAllTasks();
             return false;
         }
-
+        // 2.计算本次任务循环的截止时间
         final long deadline = timeoutNanos > 0 ? ScheduledFutureTask.nanoTime() + timeoutNanos : 0;
         long runTasks = 0;
         long lastExecutionTime;
+        // 3.循环执行任务
         for (;;) {
-            safeExecute(task);
+            safeExecute(task); //调用safeExecute来确保任务安全执行，忽略任何异常
 
             runTasks ++;
 
             // Check timeout every 64 tasks because nanoTime() is relatively expensive.
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
+            // 每执行完64个任务之后，判断当前时间是否超过本次reactor任务循环的截止时间了，如果超过，那就break掉，如果没有超过，那就继续执行
+            // 性能的优化考虑地相当的周到，假设netty任务队列里面如果有海量小任务，如果每次都要执行完任务都要判断一下是否到截止时间，那么效率是比较低下的。
             if ((runTasks & 0x3F) == 0) {
                 lastExecutionTime = ScheduledFutureTask.nanoTime();
                 if (lastExecutionTime >= deadline) {
@@ -486,7 +492,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 break;
             }
         }
-
+        // 4.收尾
+        // NioEventLoop可以通过父类SingleTheadEventLoop的executeAfterEventLoopIteration方法向tailTasks中添加收尾任务
         afterRunningAllTasks();
         this.lastExecutionTime = lastExecutionTime;
         return true;
@@ -617,14 +624,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     @Override
     public Future<?> shutdownGracefully(long quietPeriod, long timeout, TimeUnit unit) {
-        ObjectUtil.checkPositiveOrZero(quietPeriod, "quietPeriod");
-        if (timeout < quietPeriod) {
+        ObjectUtil.checkPositiveOrZero(quietPeriod, "quietPeriod"); // 静待时间需要>=0
+        if (timeout < quietPeriod) { // 超时时间不能小于静待时间
             throw new IllegalArgumentException(
                     "timeout: " + timeout + " (expected >= quietPeriod (" + quietPeriod + "))");
         }
         ObjectUtil.checkNotNull(unit, "unit");
 
-        if (isShuttingDown()) {
+        if (isShuttingDown()) { // 如果状态是关闭中或已关闭，直接返回终止Future
             return terminationFuture();
         }
 
@@ -632,7 +639,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean wakeup;
         int oldState;
         for (;;) {
-            if (isShuttingDown()) {
+            if (isShuttingDown()) { // 如果状态是关闭中或已关闭，直接返回终止Future
                 return terminationFuture();
             }
             int newState;
@@ -823,7 +830,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void execute(Runnable task, boolean immediate) {
         boolean inEventLoop = inEventLoop();
-        addTask(task);
+        addTask(task); // 添加到taskQueue中去，子类NioEventLoop重写，实际上是一个mpsc多生产者单消费者队列
         if (!inEventLoop) {
             startThread(); // 启动线程
             if (isShutdown()) {
@@ -985,7 +992,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
-                    SingleThreadEventExecutor.this.run();
+                    SingleThreadEventExecutor.this.run(); // 具体的子类去执行抽象的run()
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);

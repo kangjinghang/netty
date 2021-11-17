@@ -19,12 +19,12 @@ import io.netty.util.internal.DefaultPriorityQueue;
 import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.PriorityQueue;
 
-import static io.netty.util.concurrent.ScheduledFutureTask.deadlineNanos;
-
 import java.util.Comparator;
 import java.util.Queue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+
+import static io.netty.util.concurrent.ScheduledFutureTask.deadlineNanos;
 
 /**
  * Abstract base class for {@link EventExecutor}s that want to support scheduling.
@@ -42,7 +42,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
        @Override
        public void run() { } // Do nothing
     };
-
+    // 定时任务队列
     PriorityQueue<ScheduledFutureTask<?>> scheduledTaskQueue;
 
     long nextTaskId;
@@ -127,6 +127,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
         assert inEventLoop();
 
         ScheduledFutureTask<?> scheduledTask = peekScheduledTask();
+        // 只有在当前任务的截止时间已经到了，才会取出来，否则返回null
         if (scheduledTask == null || scheduledTask.deadlineNanos() - nanoTime > 0) {
             return null;
         }
@@ -252,12 +253,14 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
     }
 
     private <V> ScheduledFuture<V> schedule(final ScheduledFutureTask<V> task) {
-        if (inEventLoop()) {
+        if (inEventLoop()) { // 场景一：调用链的发起方是reactor线程，将定时任务加入到优先级队列中去
             scheduleFromEventLoop(task);
-        } else {
+        } else { // 场景二：进一步封装任务
             final long deadlineNanos = task.deadlineNanos();
             // task will add itself to scheduled task queue when run if not expired
+            // 如果没有过期，将在运行时将自身添加到定时任务队列中
             if (beforeScheduledTaskSubmitted(deadlineNanos)) {
+                // 场景2.1：任务还没有到期，将任务添加到子类的定时任务队列中去，对于NioEventLoop，就是其成员变量taskQueue(mpsc多生产者单消费者队列)
                 execute(task);
             } else {
                 lazyExecute(task);

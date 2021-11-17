@@ -452,6 +452,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         if (curDeadlineNanos == -1L) {
                             curDeadlineNanos = NONE; // nothing on the calendar
                         }
+//                      设置epoll边缘触发的时间
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
                             if (!hasTasks()) {
@@ -495,6 +496,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     } finally {
                         // Ensure we always run tasks.
                         final long ioTime = System.nanoTime() - ioStartTime;
+                        // 按ioRatio和ioTime折算非IO的task执行时间
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 } else {
@@ -649,14 +651,15 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private void processSelectedKeysOptimized() {
         for (int i = 0; i < selectedKeys.size; ++i) {
+            // 1.取出IO事件以及对应的channel
             final SelectionKey k = selectedKeys.keys[i];
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
-            // 呼应与 channel 的 register 中的 this ：
+            // 呼应与 channel 的 register 中的 this ：(AbstractNioChannel类doRegister())
             // 例如：selectKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
             final Object a = k.attachment(); // attachment 就是 serverSocketChannel
-
+            // 2.处理该channel
             if (a instanceof AbstractNioChannel) {
                 processSelectedKey(k, (AbstractNioChannel) a);
             } else {
@@ -664,12 +667,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 NioTask<SelectableChannel> task = (NioTask<SelectableChannel>) a;
                 processSelectedKey(k, task);
             }
-
+            // 3.判断是否该再来次轮询
             if (needsToSelectAgain) {
                 // null out entries in the array to allow to have it GC'ed once the Channel close
                 // See https://github.com/netty/netty/issues/2363
+                // 通过 selectedKeys.keys[i] = null; 和 下面这条语句，将selectedKeys清空
                 selectedKeys.reset(i + 1);
-
+                // 重新select，这样selectedKeys就会被重新设置上值
                 selectAgain();
                 i = -1;
             }

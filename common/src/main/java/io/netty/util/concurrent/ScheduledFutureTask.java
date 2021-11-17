@@ -43,8 +43,12 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
 
     // set once when added to priority queue
     private long id;
-
+    // 任务到期时间的纳秒时间，三种定时任务类型，可能会不断改变
     private long deadlineNanos;
+    /**
+     * 三种定时任务类型：
+     * 1.若干时间后执行一次，2.每隔一段时间执行一次，3.每次执行结束，隔一定时间再执行一次
+     */
     /* 0 - no repeat, >0 - repeat at fixed rate, <0 - repeat with fixed delay */
     private final long periodNanos;
 
@@ -137,7 +141,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
         if (this == o) {
             return 0;
         }
-
+        // 先比较任务的截止时间，截止时间相同的情况下，再比较id，即任务添加的顺序，如果id再相同的话，就抛Error
         ScheduledFutureTask<?> that = (ScheduledFutureTask<?>) o;
         long d = deadlineNanos() - that.deadlineNanos();
         if (d < 0) {
@@ -165,6 +169,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
                 }
                 return;
             }
+            // 对应 "若干时间后执行一次" 的定时任务类型，执行完了该任务就结束
             if (periodNanos == 0) {
                 if (setUncancellableInternal()) {
                     V result = runTask();
@@ -173,11 +178,12 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
             } else {
                 // check if is done as it may was cancelled
                 if (!isCancelled()) {
+                    // 先执行任务，然后再区分是哪种类型的任务
                     runTask();
                     if (!executor().isShutdown()) {
-                        if (periodNanos > 0) {
+                        if (periodNanos > 0) { // 表示是以固定频率执行某个任务，和任务的持续时间无关，然后，设置该任务的下一次截止时间为本次的截止时间加上间隔时间periodNanos
                             deadlineNanos += periodNanos;
-                        } else {
+                        } else { // 否则就是每次任务执行完毕之后，间隔多长时间之后再次执行，截止时间为当前时间加上间隔时间，-p（p此时为负数）就表示加上一个正的间隔时间
                             deadlineNanos = nanoTime() - periodNanos;
                         }
                         if (!isCancelled()) {
