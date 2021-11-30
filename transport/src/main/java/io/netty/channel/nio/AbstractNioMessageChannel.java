@@ -61,7 +61,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     }
 
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
-
+        // 保存读取到的一个个连接
         private final List<Object> readBuf = new ArrayList<Object>();
 
         @Override
@@ -76,7 +76,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             Throwable exception = null;
             try {
                 try {
-                    do {
+                    do { // doReadMessages方法不断地读取消息，用 readBuf 作为容器，读取的是一个个连接
                         int localRead = doReadMessages(readBuf); // do
                         if (localRead == 0) {
                             break;

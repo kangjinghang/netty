@@ -70,7 +70,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected AbstractChannel(Channel parent) {
         this.parent = parent;
-        id = newId();
+        // new出来三大组件，赋值到成员变量
+        id = newId(); // 每条channel的唯一标识
         unsafe = newUnsafe();
         pipeline = newChannelPipeline();
     }
@@ -524,7 +525,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
                         // again so that we process inbound data.
-                        //
+                        // 对于socketChannel来说就是，注册读事件，可以开始新连接的读操作（建立好连接，下面就可以读了）
                         // See https://github.com/netty/netty/issues/4805
                         beginRead();
                     }

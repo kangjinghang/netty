@@ -125,7 +125,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     @SuppressWarnings("unchecked")
     private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
         if (initMap.add(ctx)) { // Guard against re-entrance.
-            try {
+            try { // 回调到我们自己写在childHandler中new出来的ChannelInitializer中重写的init方法
                 initChannel((C) ctx.channel());
             } catch (Throwable cause) {
                 // Explicitly call exceptionCaught(...) as we removed the handler before calling initChannel(...).

@@ -78,9 +78,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
         super(parent);
-        this.ch = ch;
+        this.ch = ch; // 保存到成员变量
         this.readInterestOp = readInterestOp;
-        try {
+        try { // 设置该channel为非阻塞模式，标准的JDK NIO编程的玩法
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
@@ -402,6 +402,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     @Override
     protected void doBeginRead() throws Exception {
         // Channel.read() or ChannelHandlerContext.read() was called
+        // 前面register步骤返回的对象，前面我们在register的时候，注册的ops是0
         final SelectionKey selectionKey = this.selectionKey;
         if (!selectionKey.isValid()) {
             return;
@@ -411,6 +412,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         // 获取前面监听的 ops = 0，
         final int interestOps = selectionKey.interestOps();
         // 假设之前没有监听readInterestOp，则监听readInterestOp
+        // 就是之前new NioServerSocketChannel 时 super(null, channel, SelectionKey.OP_ACCEPT); 传进来保存到则监听readInterestOp的
         if ((interestOps & readInterestOp) == 0) {
             logger.info("interest ops：{}", readInterestOp);
             selectionKey.interestOps(interestOps | readInterestOp); // 真正的注册 interestOps，做好连接的准备
