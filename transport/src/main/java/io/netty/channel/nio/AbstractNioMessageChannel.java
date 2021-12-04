@@ -59,7 +59,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
     protected boolean continueReading(RecvByteBufAllocator.Handle allocHandle) {
         return allocHandle.continueReading();
     }
-
+    // netty将一个新连接的建立也当作一个io操作来处理，与【新连接建立操作】相关的Unsafe
     private final class NioMessageUnsafe extends AbstractNioUnsafe {
         // 保存读取到的一个个连接
         private final List<Object> readBuf = new ArrayList<Object>();
@@ -76,8 +76,8 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             Throwable exception = null;
             try {
                 try {
-                    do { // doReadMessages方法不断地读取消息，用 readBuf 作为容器，读取的是一个个连接
-                        int localRead = doReadMessages(readBuf); // do
+                    do { // 委托到所在的外部类NioSocketChannel，doReadMessages方法不断地读取消息，用 readBuf 作为容器，读取的是一个个连接
+                        int localRead = doReadMessages(readBuf); // Message的含义我们可以当作是一个SelectableChannel，读的意思就是accept一个SelectableChannel
                         if (localRead == 0) {
                             break;
                         }

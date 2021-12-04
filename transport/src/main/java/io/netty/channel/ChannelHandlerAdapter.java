@@ -52,7 +52,7 @@ public abstract class ChannelHandlerAdapter implements ChannelHandler {
          * See <a href="https://github.com/netty/netty/issues/2289">#2289</a>.
          */
         Class<?> clazz = getClass();
-        Map<Class<?>, Boolean> cache = InternalThreadLocalMap.get().handlerSharableCache();
+        Map<Class<?>, Boolean> cache = InternalThreadLocalMap.get().handlerSharableCache(); // ThreadLocal来缓存Handler的状态
         Boolean sharable = cache.get(clazz);
         if (sharable == null) {
             sharable = clazz.isAnnotationPresent(Sharable.class);
@@ -89,6 +89,6 @@ public abstract class ChannelHandlerAdapter implements ChannelHandler {
     @Override
     @Deprecated
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        ctx.fireExceptionCaught(cause);
+        ctx.fireExceptionCaught(cause); //如果我们在自定义Handler中没有处理异常，默认情况下该异常将一直传递下去，遍历每一个节点
     }
 }

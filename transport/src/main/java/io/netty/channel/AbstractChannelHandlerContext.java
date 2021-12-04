@@ -88,7 +88,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private final DefaultChannelPipeline pipeline;
     private final String name;
     private final boolean ordered;
-    private final int executionMask;
+    private final int executionMask; // context关联的handler对象支持回调的事件类型
 
     // Will be set to null if no child executor should be used, otherwise it will be set to the
     // child executor.
@@ -106,7 +106,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         this.name = ObjectUtil.checkNotNull(name, "name");
         this.pipeline = pipeline;
         this.executor = executor;
-        this.executionMask = mask(handlerClass);
+        this.executionMask = mask(handlerClass); // 调用ChannelHandlerMask#mask()，得到context关联的handler对象支持回调的事件类型，默认情况下，ChannelInboundHandler和ChannelOutboundHandler支持上述MASK_ALL_INBOUND和MASK_ALL_OUTBOUND所表示的事件。
         // Its ordered if its driven by the EventLoop or the given Executor is an instanceof OrderedEventExecutor.
         ordered = executor == null || executor instanceof OrderedEventExecutor;
     }
@@ -209,7 +209,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         invokeChannelActive(findContextInbound(MASK_CHANNEL_ACTIVE));
         return this;
     }
-
+    // 为了确保线程的安全性，将确保该操作在reactor线程中被执行
     static void invokeChannelActive(final AbstractChannelHandlerContext next) {
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
@@ -225,7 +225,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     }
 
     private void invokeChannelActive() {
-        if (invokeHandler()) {
+        if (invokeHandler()) { // head的handlerState默认是INIT，这里返回false？
             try {
                 ((ChannelInboundHandler) handler()).channelActive(this);
             } catch (Throwable t) {
@@ -787,13 +787,13 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         // 引用计数用的，用来监测内存泄露
         final Object m = pipeline.touch(msg, next);
         EventExecutor executor = next.executor();
-        if (executor.inEventLoop()) {
+        if (executor.inEventLoop()) { // reactor线程（IO线程）调用
             if (flush) {
                 next.invokeWriteAndFlush(m, promise);
             } else {
                 next.invokeWrite(m, promise);
             }
-        } else {
+        } else {  // 用户线程调用，比如在消息推送系统中，Channel channel = getChannel(userInfo); channel.writeAndFlush(pushInfo);
             final WriteTask task = WriteTask.newInstance(next, m, promise, flush);
             if (!safeExecute(executor, task, promise, m, !flush)) {
                 // We failed to submit the WriteTask. We need to cancel it so we decrement the pending bytes
@@ -874,13 +874,13 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         }
         return false;
     }
-
+    // 因为pipeline是个职责链，它需要判断当前的method是否被允许执行。使用 (ctx.executionMask & mask) == 0 来表示当前是否被禁止调用。如果是的话，则忽略，继续迭代，直到找到允许被调用的 handler
     private AbstractChannelHandlerContext findContextInbound(int mask) {
         AbstractChannelHandlerContext ctx = this;
         EventExecutor currentExecutor = executor();
         do {
             ctx = ctx.next;
-        } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_INBOUND));
+        } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_INBOUND)); // 如果下一个Handler的某个事件，标注@Skip的会被跳过 继续寻找下一个
         return ctx;
     }
 
@@ -889,10 +889,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         EventExecutor currentExecutor = executor();
         do {
             ctx = ctx.prev;
-        } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_OUTBOUND));
+        } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_OUTBOUND)); // 如果上一个Handler的某个事件，标注@Skip的会被跳过 继续寻找下一个
         return ctx;
     }
-
+    // 表示会跳过执行
     private static boolean skipContext(
             AbstractChannelHandlerContext ctx, EventExecutor currentExecutor, int mask, int onlyMask) {
         // Ensure we correctly handle MASK_EXCEPTION_CAUGHT which is not included in the MASK_EXCEPTION_CAUGHT
@@ -901,7 +901,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
                 // everything to preserve ordering.
                 //
                 // See https://github.com/netty/netty/issues/10067
-                (ctx.executor() == currentExecutor && (ctx.executionMask & mask) == 0);
+                (ctx.executor() == currentExecutor && (ctx.executionMask & mask) == 0); // (ctx.executionMask & mask) == 0表示当前是否被禁止调用
     }
 
     @Override
@@ -912,17 +912,17 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     final void setRemoved() {
         handlerState = REMOVE_COMPLETE;
     }
-
+    // 设置并返回该节点的状态
     final boolean setAddComplete() {
         for (;;) {
             int oldState = handlerState;
-            if (oldState == REMOVE_COMPLETE) {
+            if (oldState == REMOVE_COMPLETE) { // 如果原来状态是REMOVE_COMPLETE，说明该节点已经被移除，返回false
                 return false;
             }
             // Ensure we never update when the handlerState is REMOVE_COMPLETE already.
             // oldState is usually ADD_PENDING but can also be REMOVE_COMPLETE when an EventExecutor is used that is not
             // exposing ordering guarantees.
-            if (HANDLER_STATE_UPDATER.compareAndSet(this, oldState, ADD_COMPLETE)) {
+            if (HANDLER_STATE_UPDATER.compareAndSet(this, oldState, ADD_COMPLETE)) { // 用cas修改节点的状态至ADD_COMPLETE
                 return true;
             }
         }
@@ -936,20 +936,20 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     final void callHandlerAdded() throws Exception {
         // We must call setAddComplete before calling handlerAdded. Otherwise if the handlerAdded method generates
         // any pipeline events ctx.handler() will miss them because the state will not allow it.
-        if (setAddComplete()) {
-            handler().handlerAdded(this);
+        if (setAddComplete()) { // 设置该节点的状态
+            handler().handlerAdded(this); // 回调用户自定义的handler里的handlerAdded方法
         }
     }
 
     final void callHandlerRemoved() throws Exception {
         try {
             // Only call handlerRemoved(...) if we called handlerAdded(...) before.
-            if (handlerState == ADD_COMPLETE) {
+            if (handlerState == ADD_COMPLETE) { // 只有状态是ADD_COMPLETE才会被调用
                 handler().handlerRemoved(this);
             }
         } finally {
             // Mark the handler as removed in any case.
-            setRemoved();
+            setRemoved(); // 将该节点的状态设置为REMOVE_COMPLETE
         }
     }
 

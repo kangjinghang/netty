@@ -192,17 +192,17 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline addLast(String name, ChannelHandler handler) {
-        return addLast(null, name, handler);
+        return addLast(null, name, handler); // group传入null
     }
 
     @Override
     public final ChannelPipeline addLast(EventExecutorGroup group, String name, ChannelHandler handler) {
         final AbstractChannelHandlerContext newCtx;
-        synchronized (this) {
-            checkMultiplicity(handler);
-
+        synchronized (this) { // synchronized，为了防止多线程并发操作pipeline底层的双向链表。
+            checkMultiplicity(handler); // 1.检查是否有重复handler
+            // 2.创建节点
             newCtx = newContext(group, filterName(name, handler), handler);
-
+            // 3.添加节点
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
@@ -220,7 +220,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 return this;
             }
         }
-        callHandlerAdded0(newCtx);
+        callHandlerAdded0(newCtx); // 4.回调用户方法
         return this;
     }
 
@@ -383,19 +383,19 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         return this;
     }
-
+    // 生成handler的name
     private String generateName(ChannelHandler handler) {
-        Map<Class<?>, String> cache = nameCaches.get();
+        Map<Class<?>, String> cache = nameCaches.get();  // 先查看缓存中是否有生成过默认name
         Class<?> handlerType = handler.getClass();
         String name = cache.get(handlerType);
-        if (name == null) {
+        if (name == null) { // 没有生成过，就生成一个默认name，加入缓存
             name = generateName0(handlerType);
             cache.put(handlerType, name);
         }
-
+        // 生成完了，还要看默认name有没有冲突
         // It's not very likely for a user to put more than one handler of the same type, but make sure to avoid
         // any name conflicts.  Note that we don't cache the names generated here.
-        if (context0(name) != null) {
+        if (context0(name) != null) { // 现有的context里面已经有了一个默认name，那么就从 简单类名#1 往上一直找，直到找到一个唯一的name，比如简单类名#3
             String baseName = name.substring(0, name.length() - 1); // Strip the trailing '0'.
             for (int i = 1;; i ++) {
                 String newName = baseName + i;
@@ -411,7 +411,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private static String generateName0(Class<?> handlerType) {
         return StringUtil.simpleClassName(handlerType) + "#0";
     }
-
+    // 1.找到待删除的节点，2.调整双向链表指针删除，3.回调用户函数
     @Override
     public final ChannelPipeline remove(ChannelHandler handler) {
         remove(getContextOrDie(handler));
@@ -448,12 +448,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
         return (T) remove((AbstractChannelHandlerContext) ctx).handler();
     }
-
+    // 2.调整双向链表指针删除，3.回调用户函数
     private AbstractChannelHandlerContext remove(final AbstractChannelHandlerContext ctx) {
         assert ctx != head && ctx != tail;
 
         synchronized (this) {
-            atomicRemoveFromHandlerList(ctx);
+            atomicRemoveFromHandlerList(ctx); // 2.调整双向链表指针删除
 
             // If the registered is false it means that the channel was not registered on an eventloop yet.
             // In this case we remove the context from the pipeline and add a task that will call
@@ -474,7 +474,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 return ctx;
             }
         }
-        callHandlerRemoved0(ctx);
+        callHandlerRemoved0(ctx); // 3.回调用户函数
         return ctx;
     }
 
@@ -1194,7 +1194,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      */
     protected void onUnhandledInboundMessage(ChannelHandlerContext ctx, Object msg) {
         onUnhandledInboundMessage(msg);
-        if (logger.isDebugEnabled()) {
+        if (logger.isDebugEnabled()) { // 发现字节数据(ByteBuf)或者decoder之后的业务对象在pipeline流转过程中没有被消费，落到tail节点，tail节点就会给你发出一个警告，告诉你，将未处理的数据给丢掉了
             logger.debug("Discarded message pipeline : {}. Channel : {}.",
                          ctx.pipeline().names(), ctx.channel());
         }
@@ -1240,12 +1240,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             buffer.decrementPendingOutboundBytes(size);
         }
     }
-
+    // 注意：TailContext 是 ChannelInboundHandler
     // A special catch-all handler that handles both bytes and messages. 用于向用户抛出pipeline中未处理异常以及对未处理消息的警告
     final class TailContext extends AbstractChannelHandlerContext implements ChannelInboundHandler {
 
         TailContext(DefaultChannelPipeline pipeline) {
-            super(pipeline, null, TAIL_NAME, TailContext.class);
+            super(pipeline, null, TAIL_NAME, TailContext.class); // executor传入null
             setAddComplete();
         }
 
@@ -1301,7 +1301,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             onUnhandledInboundChannelReadComplete();
         }
     }
-    // 调用Unsafe做具体的操作
+    // 作为pipeline的头节点开始传递读写事件，调用unsafe进行实际的读写操作 注意：TailContext 既是ChannelOutboundHandler，也是ChannelInboundHandler
     final class HeadContext extends AbstractChannelHandlerContext
             implements ChannelOutboundHandler, ChannelInboundHandler {
 
@@ -1360,7 +1360,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void read(ChannelHandlerContext ctx) {
             // 实际上就是注册OP_ACCEPT/OP_READ事件：创建连接或者读事件
-            unsafe.beginRead();
+            unsafe.beginRead(); // 委托到AbstractUnsafe
         }
         // headContext write msg
         @Override
@@ -1419,7 +1419,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         }
 
         private void readIfIsAutoRead() {
-            if (channel.config().isAutoRead()) {
+            if (channel.config().isAutoRead()) { // 默认情况下，Channel都是默认开启自动读取模式的，即只要Channel是active的，读完一波数据之后就继续向selector注册读事件，这样就可以连续不断得读取数据
                 channel.read();
             }
         }

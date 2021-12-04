@@ -413,7 +413,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         final int interestOps = selectionKey.interestOps();
         // 假设之前没有监听readInterestOp，则监听readInterestOp
         // 就是之前new NioServerSocketChannel 时 super(null, channel, SelectionKey.OP_ACCEPT); 传进来保存到则监听readInterestOp的
-        if ((interestOps & readInterestOp) == 0) {
+        if ((interestOps & readInterestOp) == 0) { // interestOps 不包括 readInterestOp，https://cloud.tencent.com/developer/article/1603990
             logger.info("interest ops：{}", readInterestOp);
             selectionKey.interestOps(interestOps | readInterestOp); // 真正的注册 interestOps，做好连接的准备
         }

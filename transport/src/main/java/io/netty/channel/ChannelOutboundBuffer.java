@@ -42,7 +42,7 @@ import static java.lang.Math.min;
 /**
  * (Transport implementors only) an internal data structure used by {@link AbstractChannel} to store its pending
  * outbound write requests.
- * <p>
+ * <p> 数据结构是一个单链表结构，每个节点是一个 Entry
  * All methods must be called by a transport implementation from an I/O thread, except the following ones:
  * <ul>
  * <li>{@link #size()} and {@link #isEmpty()}</li>
@@ -74,12 +74,12 @@ public final class ChannelOutboundBuffer {
     private final Channel channel;
 
     // Entry(flushedEntry) --> ... Entry(unflushedEntry) --> ... Entry(tailEntry)
-    //
-    // The Entry that is the first in the linked-list structure that was flushed
+    // ChannelOutboundBuffer是一个典型的链表结构
+    // The Entry that is the first in the linked-list structure that was flushed，第一个要被写到操作系统Socket缓冲区中的节点
     private Entry flushedEntry;
-    // The Entry which is the first unflushed in the linked-list structure
+    // The Entry which is the first unflushed in the linked-list structure，第一个未被写入到操作系统Socket缓冲区中的节点
     private Entry unflushedEntry;
-    // The Entry which represents the tail of the buffer
+    // The Entry which represents the tail of the buffer，缓冲区的最后一个节点
     private Entry tailEntry;
     // The number of flushed entries that are not written yet
     private int flushed;
@@ -112,7 +112,7 @@ public final class ChannelOutboundBuffer {
      * the message was written.
      */
     public void addMessage(Object msg, int size, ChannelPromise promise) {
-        Entry entry = Entry.newInstance(msg, size, total(msg), promise);
+        Entry entry = Entry.newInstance(msg, size, total(msg), promise);   // 创建一个待写出的消息节点
         if (tailEntry == null) {
             flushedEntry = null;
         } else {
@@ -131,7 +131,7 @@ public final class ChannelOutboundBuffer {
 
     /**
      * Add a flush to this {@link ChannelOutboundBuffer}. This means all previous added messages are marked as flushed
-     * and so you will be able to handle them.
+     * and so you will be able to handle them. 3个指针变更，  flushedEntry --> ... unflushedEntry --> ... tailEntry(null)
      */
     public void addFlush() {
         // There is no need to process all entries if there was already a flush before and no new messages
@@ -139,7 +139,7 @@ public final class ChannelOutboundBuffer {
         //
         // See https://github.com/netty/netty/issues/2577
         Entry entry = unflushedEntry;
-        if (entry != null) {
+        if (entry != null) { // 如果此前unflushedEntry指针不为null（上次flush没有处理全部节点）并且没有新的消息添加进来，那么不用遍历所有没有被flush的entry
             if (flushedEntry == null) {
                 // there is no flushedEntry yet, so start with the entry，unflushedEntry 数据转换为 flushedEntry
                 flushedEntry = entry;
@@ -255,27 +255,27 @@ public final class ChannelOutboundBuffer {
      * messages are ready to be handled.
      */
     public boolean remove() {
-        Entry e = flushedEntry;
+        Entry e = flushedEntry; // 拿到当前被flush掉的节点(flushedEntry所指)
         if (e == null) {
             clearNioBuffers();
             return false;
         }
         Object msg = e.msg;
 
-        ChannelPromise promise = e.promise;
+        ChannelPromise promise = e.promise; // 到该节点的回调对象 ChannelPromise
         int size = e.pendingSize;
 
-        removeEntry(e);
+        removeEntry(e); // 移除该节点，并将flushedEntry指针（下一个要被写到socket缓冲区的指针）指向下一个节点
 
         if (!e.cancelled) {
             // only release message, notify and decrement if it was not canceled before.
             ReferenceCountUtil.safeRelease(msg);
-            safeSuccess(promise);
+            safeSuccess(promise); // 回调用户的listener
             decrementPendingOutboundBytes(size, false, true);
         }
 
         // recycle the entry
-        e.recycle();
+        e.recycle(); // 回收当前节点
 
         return true;
     }
@@ -325,7 +325,7 @@ public final class ChannelOutboundBuffer {
                 unflushedEntry = null;
             }
         } else {
-            flushedEntry = e.next;
+            flushedEntry = e.next; // flushedEntry（下一个要被写到socket缓冲区的指针）指向下一个节点
         }
     }
 
@@ -715,7 +715,7 @@ public final class ChannelOutboundBuffer {
 
     private static void safeSuccess(ChannelPromise promise) {
         // Only log if the given promise is not of type VoidChannelPromise as trySuccess(...) is expected to return
-        // false.
+        // false. 回调用户的listener
         PromiseNotificationUtil.trySuccess(promise, null, promise instanceof VoidChannelPromise ? null : logger);
     }
 
@@ -812,7 +812,7 @@ public final class ChannelOutboundBuffer {
         Object msg;
         ByteBuffer[] bufs;
         ByteBuffer buf;
-        ChannelPromise promise;
+        ChannelPromise promise; // 消息回调 promise
         long progress;
         long total;
         int pendingSize;

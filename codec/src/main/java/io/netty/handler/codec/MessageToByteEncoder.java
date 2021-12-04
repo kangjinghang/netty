@@ -99,17 +99,17 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         ByteBuf buf = null;
         try {
-            if (acceptOutboundMessage(msg)) {
+            if (acceptOutboundMessage(msg)) { //1. 需要判断当前编码器能否处理这类对象
                 @SuppressWarnings("unchecked")
-                I cast = (I) msg;
-                buf = allocateBuffer(ctx, cast, preferDirect);
+                I cast = (I) msg; // 2.强制类型转换
+                buf = allocateBuffer(ctx, cast, preferDirect); // 3.分配内存
                 try {
-                    encode(ctx, cast, buf);
+                    encode(ctx, cast, buf); // 4.回到子类的实现方法中，将buf装满数据（用户将数据写入ByteBuf）
                 } finally {
-                    ReferenceCountUtil.release(cast);
+                    ReferenceCountUtil.release(cast); // 既然自定义java对象转换成ByteBuf了，那么这个对象就已经无用了，释放掉。(当传入的msg类型是ByteBuf的时候，就不需要自己手动释放了)
                 }
 
-                if (buf.isReadable()) {
+                if (buf.isReadable()) { // 5.buf到这里已经装载着数据，于是把该buf往前丢，直到head节点
                     ctx.write(buf, promise);
                 } else {
                     buf.release();
@@ -117,7 +117,7 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
                 }
                 buf = null;
             } else {
-                ctx.write(msg, promise);
+                ctx.write(msg, promise); // 如果不能处理，就将outBound事件继续往前面传播
             }
         } catch (EncoderException e) {
             throw e;
@@ -125,7 +125,7 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
             throw new EncoderException(e);
         } finally {
             if (buf != null) {
-                buf.release();
+                buf.release(); // 释放buf，避免堆外内存泄漏
             }
         }
     }

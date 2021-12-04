@@ -725,7 +725,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
-            // 处理读请求（断开连接）或者接入连接
+            // 新连接的已准备接入或者已存在的连接有数据可读，处理读请求（断开连接）或者接入连接
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
                 unsafe.read();
             }

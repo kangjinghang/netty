@@ -94,7 +94,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         return config instanceof SocketChannelConfig &&
                 ((SocketChannelConfig) config).isAllowHalfClosure();
     }
-
+    // 与【连接的字节数据读写】相关的Unsafe
     protected class NioByteUnsafe extends AbstractNioUnsafe {
 
         private void closeOnRead(ChannelPipeline pipeline) {
@@ -142,7 +142,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return;
             }
             final ChannelPipeline pipeline = pipeline();
-            final ByteBufAllocator allocator = config.getAllocator();
+            final ByteBufAllocator allocator = config.getAllocator(); // 创建ByteBuf分配器
             // io.netty.channel.DefaultChannelConfig 中设置 RecvByteBufAllocator ，默认 AdaptiveRecvByteBufAllocator
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
             allocHandle.reset(config);
@@ -151,10 +151,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             boolean close = false;
             try {
                 do {
-                    // 尽可能分配合适的大小：guess，第一次就是 1024 byte
+                    // 分配一个ByteBuf，尽可能分配合适的大小：guess，第一次就是 1024 byte
                     byteBuf = allocHandle.allocate(allocator);
                     // 读并且记录读了多少，如果读满了，下次continue的话就直接扩容。
-                    allocHandle.lastBytesRead(doReadBytes(byteBuf));
+                    allocHandle.lastBytesRead(doReadBytes(byteBuf)); // doReadBytes(byteBuf)，委托到所在的外部类NioSocketChannel
                     if (allocHandle.lastBytesRead() <= 0) {
                         // nothing was read. release the buffer. 数据清理
                         byteBuf.release();
@@ -169,7 +169,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     // 记录一下读了几次，仅仅一次
                     allocHandle.incMessagesRead(1);
                     readPending = false;
-                    // pipeline上执行，业务逻辑的处理就是在这个地方，将得到的数据 byteBuf 传递出去
+                    // 触发事件，将会引发pipeline的读事件传播，pipeline上执行，业务逻辑的处理就是在这个地方，将得到的数据 byteBuf 传递出去
                     pipeline.fireChannelRead(byteBuf);
                     byteBuf = null;
                 } while (allocHandle.continueReading());
@@ -219,7 +219,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         }
         return doWriteInternal(in, in.current());
     }
-
+    // 同filterOutboundMessage(msg)呼应，只能写ByteBuf或FileRegion类型的数据
     private int doWriteInternal(ChannelOutboundBuffer in, Object msg) throws Exception {
         if (msg instanceof ByteBuf) {
             ByteBuf buf = (ByteBuf) msg;
@@ -228,11 +228,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return 0;
             }
 
-            final int localFlushedAmount = doWriteBytes(buf);
+            final int localFlushedAmount = doWriteBytes(buf); // 将当前节点写出
             if (localFlushedAmount > 0) {
                 in.progress(localFlushedAmount);
                 if (!buf.isReadable()) {
-                    in.remove();
+                    in.remove(); // 写完之后，将当前节点删除
                 }
                 return 1;
             }
@@ -260,21 +260,21 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
     @Override
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
-        int writeSpinCount = config().getWriteSpinCount();
+        int writeSpinCount = config().getWriteSpinCount(); // 1.拿到自旋锁迭代次数
         do {
-            Object msg = in.current();
+            Object msg = in.current(); // 2.拿到第一个需要flush的节点的数据
             if (msg == null) {
                 // Wrote all messages.
                 clearOpWrite();
                 // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
-            writeSpinCount -= doWriteInternal(in, msg);
+            writeSpinCount -= doWriteInternal(in, msg); // 3.不断的自旋调用doWriteInternal方法，直到自旋次数小于或等于0为止
         } while (writeSpinCount > 0);
 
         incompleteWrite(writeSpinCount < 0);
     }
-
+    // 过滤非ByteBuf和FileRegion的对象
     @Override
     protected final Object filterOutboundMessage(Object msg) {
         if (msg instanceof ByteBuf) {
@@ -283,7 +283,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return msg;
             }
 
-            return newDirectBuffer(buf);
+            return newDirectBuffer(buf); // 所有的非直接内存转换成直接内存DirectBuffer
         }
 
         if (msg instanceof FileRegion) {

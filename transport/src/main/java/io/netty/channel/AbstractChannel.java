@@ -70,7 +70,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      */
     protected AbstractChannel(Channel parent) {
         this.parent = parent;
-        // new出来三大组件，赋值到成员变量
+        // new出来三大组件（id，unsafe，pipeline），赋值到成员变量
         id = newId(); // 每条channel的唯一标识
         unsafe = newUnsafe();
         pipeline = newChannelPipeline();
@@ -867,7 +867,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public final void write(Object msg, ChannelPromise promise) {
-            assertEventLoop();
+            assertEventLoop(); //  1.确保该方法的调用是在reactor线程中
 
             ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             // 下面的判断，是判断是否 channel 已经关闭了
@@ -887,9 +887,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             int size;
-            try {
-                msg = filterOutboundMessage(msg);
-                size = pipeline.estimatorHandle().size(msg);
+            try { // 2.过滤待写入的对象，把非ByteBuf对象和FileRegion过滤掉，把所有的非直接内存转换成直接内存DirectBuffer
+                msg = filterOutboundMessage(msg); // 委托给AbstractChannel（通常是AbstractNioByteChannel）调用
+                size = pipeline.estimatorHandle().size(msg); // 3.估算出需要写入的ByteBuf的size
                 if (size < 0) {
                     size = 0;
                 }
@@ -901,7 +901,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 }
                 return;
             }
-            // 消息放到 buf 里面
+            // 4.消息放到 buf 里面
             outboundBuffer.addMessage(msg, size, promise);
         }
 
@@ -951,7 +951,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
-                doWrite(outboundBuffer);
+                doWrite(outboundBuffer); // 核心方法，委托给AbstractNioByteChannel执行
             } catch (Throwable t) {
                 handleWriteError(t);
             } finally {
