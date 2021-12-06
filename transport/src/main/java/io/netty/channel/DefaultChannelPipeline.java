@@ -1301,7 +1301,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             onUnhandledInboundChannelReadComplete();
         }
     }
-    // 作为pipeline的头节点开始传递读写事件，调用unsafe进行实际的读写操作 注意：TailContext 既是ChannelOutboundHandler，也是ChannelInboundHandler
+    // 作为pipeline的头节点开始传递读写事件，调用unsafe进行实际的读写操作 注意：HeadContext 既是ChannelOutboundHandler，也是ChannelInboundHandler
     final class HeadContext extends AbstractChannelHandlerContext
             implements ChannelOutboundHandler, ChannelInboundHandler {
 
@@ -1398,7 +1398,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         public void channelActive(ChannelHandlerContext ctx) {
             ctx.fireChannelActive();
             // 注册读事件：读包括：创建连接/读数据
-            readIfIsAutoRead();
+            readIfIsAutoRead(); // socket连接时触发入站事件channelActive，然后向自身发出read()请求
         }
 
         @Override

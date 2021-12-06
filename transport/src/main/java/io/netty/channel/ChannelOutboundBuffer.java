@@ -658,7 +658,7 @@ public final class ChannelOutboundBuffer {
 
         try {
             inFail = true;
-            for (;;) {
+            for (;;) { // 遍历Entry缓存对象链表
                 if (!remove0(cause, notify)) {
                     break;
                 }
@@ -718,7 +718,7 @@ public final class ChannelOutboundBuffer {
         // false. 回调用户的listener
         PromiseNotificationUtil.trySuccess(promise, null, promise instanceof VoidChannelPromise ? null : logger);
     }
-
+    // 回调用户代码的回调方法
     private static void safeFail(ChannelPromise promise, Throwable cause) {
         // Only log if the given promise is not of type VoidChannelPromise as tryFailure(...) is expected to return
         // false.

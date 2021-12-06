@@ -107,7 +107,7 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
      * Connect a {@link Channel} to the remote peer.
      */
     public ChannelFuture connect() {
-        validate();
+        validate(); // 校验一下各个参数是不是正确设置了
         SocketAddress remoteAddress = this.remoteAddress;
         if (remoteAddress == null) {
             throw new IllegalStateException("remoteAddress not set");

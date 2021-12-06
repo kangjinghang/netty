@@ -25,8 +25,8 @@ import io.netty.util.concurrent.Promise;
 public interface ChannelPromise extends ChannelFuture, Promise<Void> {
 
     @Override
-    Channel channel();
-
+    Channel channel(); // 覆写 ChannelFuture 中的 channel() 方法，其实这个方法一点没变
+    // 下面几个方法是覆写 Promise 中的接口，为了返回值类型是 ChannelPromise
     @Override
     ChannelPromise setSuccess(Void result);
 
@@ -36,7 +36,7 @@ public interface ChannelPromise extends ChannelFuture, Promise<Void> {
 
     @Override
     ChannelPromise setFailure(Throwable cause);
-
+    // 到这里大家应该都熟悉了，下面几个方法的覆写也是为了得到 ChannelPromise 类型的实例
     @Override
     ChannelPromise addListener(GenericFutureListener<? extends Future<? super Void>> listener);
 

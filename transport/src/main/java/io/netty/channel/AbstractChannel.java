@@ -721,7 +721,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             final boolean wasActive = isActive();
             final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             // 不接受消息
-            this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
+                this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
             Executor closeExecutor = prepareToClose();
             if (closeExecutor != null) {
                 closeExecutor.execute(new Runnable() {
@@ -738,7 +738,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                                 public void run() {
                                     if (outboundBuffer != null) {
                                         // Fail all the queued messages
-                                        outboundBuffer.failFlushed(cause, notify);
+                                        outboundBuffer.failFlushed(cause, notify); // 移除flushedEntry指针之后的所有Entry
                                         outboundBuffer.close(closeCause);
                                     }
                                     fireChannelInactiveAndDeregister(wasActive);

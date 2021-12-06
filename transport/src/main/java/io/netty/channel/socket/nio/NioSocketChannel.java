@@ -66,7 +66,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
              *
              *  See <a href="https://github.com/netty/netty/issues/2308">#2308</a>.
              */
-            return provider.openSocketChannel();
+            return provider.openSocketChannel(); // 创建 SocketChannel 实例
         } catch (IOException e) {
             throw new ChannelException("Failed to open a socket.", e);
         }
@@ -78,14 +78,14 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
      * Create a new instance
      */
     public NioSocketChannel() {
-        this(DEFAULT_SELECTOR_PROVIDER);
+        this(DEFAULT_SELECTOR_PROVIDER); // SelectorProvider 实例用于创建 JDK 的 SocketChannel 实例
     }
 
     /**
      * Create a new instance using the given {@link SelectorProvider}.
      */
     public NioSocketChannel(SelectorProvider provider) {
-        this(newSocket(provider));
+        this(newSocket(provider)); // newSocket(provider) 方法会创建 JDK 的 SocketChannel
     }
 
     /**

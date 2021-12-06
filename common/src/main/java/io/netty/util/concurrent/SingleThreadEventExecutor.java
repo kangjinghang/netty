@@ -73,13 +73,13 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
-    // 普通任务队列
+    // 普通任务队列，这个东西很重要，提交给 NioEventLoop 的任务都会进入到这个 taskQueue 中等待被执行，这个 queue 的默认容量是 16
     private final Queue<Runnable> taskQueue;
 
     private volatile Thread thread;
     @SuppressWarnings("unused")
     private volatile ThreadProperties threadProperties;
-    private final Executor executor;
+    private final Executor executor; // 它是我们之前实例化的 ThreadPerTaskExecutor，我们说过，这个东西在线程池中没有用，它是给 NioEventLoop 用的
     private volatile boolean interrupted;
 
     private final CountDownLatch threadLock = new CountDownLatch(1);
@@ -164,10 +164,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     protected SingleThreadEventExecutor(EventExecutorGroup parent, Executor executor,
                                         boolean addTaskWakesUp, Queue<Runnable> taskQueue,
                                         RejectedExecutionHandler rejectedHandler) {
-        super(parent);
+        super(parent); // 设置了 parent，也就是之前创建的线程池 NioEventLoopGroup 实例
         this.addTaskWakesUp = addTaskWakesUp;
         this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
-        this.executor = ThreadExecutorMap.apply(executor, this);
+        this.executor = ThreadExecutorMap.apply(executor, this); // 它是我们之前实例化的 ThreadPerTaskExecutor，我们说过，这个东西在线程池中没有用，它是给 NioEventLoop 用的
         this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
         this.rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }

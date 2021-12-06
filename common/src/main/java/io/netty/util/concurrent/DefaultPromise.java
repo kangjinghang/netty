@@ -46,26 +46,26 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     private static final CauseHolder CANCELLATION_CAUSE_HOLDER = new CauseHolder(
             StacklessCancellationException.newInstance(DefaultPromise.class, "cancel(...)"));
     private static final StackTraceElement[] CANCELLATION_STACK = CANCELLATION_CAUSE_HOLDER.cause.getStackTrace();
-
+    // 保存执行结果
     private volatile Object result;
-    private final EventExecutor executor;
+    private final EventExecutor executor; // 执行任务的线程池，promise 持有 executor 的引用
     /**
      * One or more listeners. Can be a {@link GenericFutureListener} or a {@link DefaultFutureListeners}.
      * If {@code null}, it means either 1) no listeners were added yet or 2) all listeners were notified.
      *
      * Threading - synchronized(this). We must support adding listeners when there is no EventExecutor.
      */
-    private Object listeners;
+    private Object listeners; // 监听者，回调函数，任务结束后（正常或异常结束）执行
     /**
      * Threading - synchronized(this). We are required to hold the monitor to use Java's underlying wait()/notifyAll().
      */
-    private short waiters;
+    private short waiters; // 等待这个 promise 的线程数(调用sync()/await()进行等待的线程数量)
 
     /**
      * Threading - synchronized(this). We must prevent concurrent notification and FIFO listener notification if the
      * executor changes.
      */
-    private boolean notifyingListeners;
+    private boolean notifyingListeners; // 是否正在唤醒等待线程，用于防止重复执行唤醒，不然会重复执行 listeners 的回调方法
 
     /**
      * Creates a new instance.
@@ -401,8 +401,8 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
 
     @Override
     public Promise<V> sync() throws InterruptedException {
-        await();
-        rethrowIfFailed();
+        await(); // 内部调用 await()
+        rethrowIfFailed(); // 如果任务是失败的，重新抛出相应的异常。这就是 sync() 和 await() 的不同
         return this;
     }
 

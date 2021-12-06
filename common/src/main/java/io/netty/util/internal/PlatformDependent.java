@@ -729,7 +729,7 @@ public final class PlatformDependent {
     public static ByteBuffer allocateDirectNoCleaner(int capacity) {
         assert USE_DIRECT_BUFFER_NO_CLEANER;
 
-        incrementMemoryCounter(capacity);
+        incrementMemoryCounter(capacity); // 堆外内存统计
         try {
             return PlatformDependent0.allocateDirectNoCleaner(capacity);
         } catch (Throwable e) {
@@ -747,7 +747,7 @@ public final class PlatformDependent {
         assert USE_DIRECT_BUFFER_NO_CLEANER;
 
         int len = capacity - buffer.capacity();
-        incrementMemoryCounter(len);
+        incrementMemoryCounter(len); // 堆外内存统计
         try {
             return PlatformDependent0.reallocateDirectNoCleaner(buffer, capacity);
         } catch (Throwable e) {
