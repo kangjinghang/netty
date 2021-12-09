@@ -42,7 +42,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     }
 
     // set once when added to priority queue
-    private long id;
+    private long id; // 调度任务ID生成器
     // 任务到期时间的纳秒时间，三种定时任务类型，可能会不断改变
     private long deadlineNanos;
     /**
@@ -177,17 +177,17 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
                 }
             } else {
                 // check if is done as it may was cancelled
-                if (!isCancelled()) {
+                if (!isCancelled()) { // 重复的任务可能被取消
                     // 先执行任务，然后再区分是哪种类型的任务
                     runTask();
-                    if (!executor().isShutdown()) {
+                    if (!executor().isShutdown()) { // 线程已经关闭则不再添加新任
                         if (periodNanos > 0) { // 表示是以固定频率执行某个任务，和任务的持续时间无关，然后，设置该任务的下一次截止时间为本次的截止时间加上间隔时间periodNanos
                             deadlineNanos += periodNanos;
                         } else { // 否则就是每次任务执行完毕之后，间隔多长时间之后再次执行，截止时间为当前时间加上间隔时间，-p（p此时为负数）就表示加上一个正的间隔时间
                             deadlineNanos = nanoTime() - periodNanos;
                         }
                         if (!isCancelled()) {
-                            scheduledExecutor().scheduledTaskQueue().add(this);
+                            scheduledExecutor().scheduledTaskQueue().add(this); // 下一个最近的重复任务添加到任务队列
                         }
                     }
                 }

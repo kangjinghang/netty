@@ -69,8 +69,8 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             assert eventLoop().inEventLoop();
             final ChannelConfig config = config();
             final ChannelPipeline pipeline = pipeline();
-            final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
-            allocHandle.reset(config);
+            final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle(); // 获取之前在创建channel配置器的时候传入的AdaptiveRecvByteBufAllocator
+            allocHandle.reset(config); // 重置一些变量
 
             boolean closed = false;
             Throwable exception = null;

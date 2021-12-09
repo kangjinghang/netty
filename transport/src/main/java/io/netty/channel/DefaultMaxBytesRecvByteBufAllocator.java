@@ -15,14 +15,14 @@
  */
 package io.netty.channel;
 
-import static io.netty.util.internal.ObjectUtil.checkPositive;
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.util.UncheckedBooleanSupplier;
 
 import java.util.AbstractMap;
 import java.util.Map.Entry;
+
+import static io.netty.util.internal.ObjectUtil.checkPositive;
 
 /**
  * The {@link RecvByteBufAllocator} that yields a buffer size prediction based upon decrementing the value from
@@ -46,7 +46,7 @@ public class DefaultMaxBytesRecvByteBufAllocator implements MaxBytesRecvByteBufA
 
         @Override
         public ByteBuf allocate(ByteBufAllocator alloc) {
-            return alloc.ioBuffer(guess());
+            return alloc.ioBuffer(guess()); // 猜测下一次会分配多少内存，这里默认是1024
         }
 
         @Override

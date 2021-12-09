@@ -245,16 +245,16 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                 }
 
                 boolean wasActive = isActive();
-                if (doConnect(remoteAddress, localAddress)) {
-                    fulfillConnectPromise(promise, wasActive);
+                if (doConnect(remoteAddress, localAddress)) { // 做 JDK 底层的 SocketChannel connect，返回值代表是否已经连接成功
+                    fulfillConnectPromise(promise, wasActive); // 处理连接成功的情况
                 } else {
                     connectPromise = promise;
                     requestedRemoteAddress = remoteAddress;
 
-                    // Schedule connect timeout.
+                    // Schedule connect timeout. 处理连接超时的情况
                     int connectTimeoutMillis = config().getConnectTimeoutMillis();
                     if (connectTimeoutMillis > 0) {
-                        connectTimeoutFuture = eventLoop().schedule(new Runnable() {
+                        connectTimeoutFuture = eventLoop().schedule(new Runnable() { // 用到了 NioEventLoop 的定时任务的功能
                             @Override
                             public void run() {
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;

@@ -17,8 +17,6 @@
 package io.netty.buffer;
 
 
-import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
-
 import io.netty.buffer.PoolArena.SizeClass;
 import io.netty.util.internal.MathUtil;
 import io.netty.util.internal.ObjectPool;
@@ -33,6 +31,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 /**
  * Acts a Thread cache for allocations. This implementation is moduled after
@@ -67,14 +67,14 @@ final class PoolThreadCache {
                     int smallCacheSize, int normalCacheSize, int maxCachedBufferCapacity,
                     int freeSweepAllocationThreshold) {
         checkPositiveOrZero(maxCachedBufferCapacity, "maxCachedBufferCapacity");
-        this.freeSweepAllocationThreshold = freeSweepAllocationThreshold;
+        this.freeSweepAllocationThreshold = freeSweepAllocationThreshold; // 分配次数的阈值
         this.heapArena = heapArena;
         this.directArena = directArena;
         if (directArena != null) {
-            smallSubPageDirectCaches = createSubPageCaches(
+            smallSubPageDirectCaches = createSubPageCaches( // 创建subPage缓存数组 ，smallCacheSize = 256， PoolArena.numSmallSubpagePools = 4
                     smallCacheSize, directArena.numSmallSubpagePools);
 
-            normalDirectCaches = createNormalCaches(
+            normalDirectCaches = createNormalCaches( // 创建Normal缓存数组 ， normalCacheSize = 64 ， maxCachedBufferCapacity = 32K
                     normalCacheSize, maxCachedBufferCapacity, directArena);
 
             directArena.numThreadCaches.getAndIncrement();
@@ -111,10 +111,10 @@ final class PoolThreadCache {
             int cacheSize, int numCaches) {
         if (cacheSize > 0 && numCaches > 0) {
             @SuppressWarnings("unchecked")
-            MemoryRegionCache<T>[] cache = new MemoryRegionCache[numCaches];
+            MemoryRegionCache<T>[] cache = new MemoryRegionCache[numCaches]; // 创建 MemoryRegionCache 数组，Small/Normal 数组大小是 4/
             for (int i = 0; i < cache.length; i++) {
                 // TODO: maybe use cacheSize / cache.length
-                cache[i] = new SubPageMemoryRegionCache<T>(cacheSize);
+                cache[i] = new SubPageMemoryRegionCache<T>(cacheSize); // 初始化
             }
             return cache;
         } else {
@@ -126,7 +126,7 @@ final class PoolThreadCache {
     private static <T> MemoryRegionCache<T>[] createNormalCaches(
             int cacheSize, int maxCachedBufferCapacity, PoolArena<T> area) {
         if (cacheSize > 0 && maxCachedBufferCapacity > 0) {
-            int max = Math.min(area.chunkSize, maxCachedBufferCapacity);
+            int max = Math.min(area.chunkSize, maxCachedBufferCapacity); // 32K 和 16m 取小的 那就是 32K
             // Create as many normal caches as we support based on how many sizeIdx we have and what the upper
             // bound is that we want to cache in general.
             List<MemoryRegionCache<T>> cache = new ArrayList<MemoryRegionCache<T>>() ;
@@ -180,11 +180,11 @@ final class PoolThreadCache {
     boolean add(PoolArena<?> area, PoolChunk chunk, ByteBuffer nioBuffer,
                 long handle, int normCapacity, SizeClass sizeClass) {
         int sizeIdx = area.size2SizeIdx(normCapacity);
-        MemoryRegionCache<?> cache = cache(area, sizeIdx, sizeClass);
+        MemoryRegionCache<?> cache = cache(area, sizeIdx, sizeClass); // 获取缓存对应的数组
         if (cache == null) {
             return false;
         }
-        return cache.add(chunk, nioBuffer, handle, normCapacity);
+        return cache.add(chunk, nioBuffer, handle, normCapacity); // 添加到队列中
     }
 
     private MemoryRegionCache<?> cache(PoolArena<?> area, int sizeIdx, SizeClass sizeClass) {
@@ -211,7 +211,7 @@ final class PoolThreadCache {
     /**
      *  Should be called if the Thread that uses this cache is about to exist to release resources out of the cache
      */
-    void free(boolean finalizer) {
+    void free(boolean finalizer) { // 对所有的数组进行释放
         // As free() may be called either by the finalizer or by FastThreadLocal.onRemoval(...) we need to ensure
         // we only call this one time.
         if (freed.compareAndSet(false, true)) {
@@ -286,9 +286,9 @@ final class PoolThreadCache {
 
     private MemoryRegionCache<?> cacheForNormal(PoolArena<?> area, int sizeIdx) {
         // We need to substract area.numSmallSubpagePools as sizeIdx is the overall index for all sizes.
-        int idx = sizeIdx - area.numSmallSubpagePools;
+        int idx = sizeIdx - area.numSmallSubpagePools; // 获取数组下标  比如  1024 就是 下边为 1 ， 512 是 0 ， 2048 是 2
         if (area.isDirect()) {
-            return cache(normalDirectCaches, idx);
+            return cache(normalDirectCaches, idx); // 根据数组下标，获取对应Cache
         }
         return cache(normalHeapCaches, idx);
     }
@@ -339,9 +339,9 @@ final class PoolThreadCache {
         private int allocations;
 
         MemoryRegionCache(int size, SizeClass sizeClass) {
-            this.size = MathUtil.safeFindNextPositivePowerOfTwo(size);
-            queue = PlatformDependent.newFixedMpscQueue(this.size);
-            this.sizeClass = sizeClass;
+            this.size = MathUtil.safeFindNextPositivePowerOfTwo(size);  // 对Size进行对齐,  Small = 256
+            queue = PlatformDependent.newFixedMpscQueue(this.size); // 创建队列，长度是Size
+            this.sizeClass = sizeClass;  // 记录类型
         }
 
         /**
@@ -355,9 +355,9 @@ final class PoolThreadCache {
          */
         @SuppressWarnings("unchecked")
         public final boolean add(PoolChunk<T> chunk, ByteBuffer nioBuffer, long handle, int normCapacity) {
-            Entry<T> entry = newEntry(chunk, nioBuffer, handle, normCapacity);
-            boolean queued = queue.offer(entry);
-            if (!queued) {
+            Entry<T> entry = newEntry(chunk, nioBuffer, handle, normCapacity); // 新建ENTRY
+            boolean queued = queue.offer(entry); //  添加到队列中
+            if (!queued) { // 如果队列满了，直接回收，不缓存
                 // If it was not possible to cache the chunk, immediately recycle the entry
                 entry.recycle();
             }

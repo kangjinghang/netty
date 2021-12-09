@@ -474,14 +474,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
                 return;
             }
-
+            // 将这个 eventLoop 实例设置给这个 channel，从此这个 channel 就是有 eventLoop 的了，这一步其实挺关键的，因为后续该 channel 中的所有异步操作，都要提交给这个 eventLoop 来执行
             AbstractChannel.this.eventLoop = eventLoop;
             // 判断自己的线程（currentThread）是不是 nioEventLoop 里的线程，比如注册的时候，currentThread 是 main thead
-            if (eventLoop.inEventLoop()) {
+            if (eventLoop.inEventLoop()) { // 对于我们来说，它不会进入到这个分支，之所以有这个分支，是因为我们是可以 unregister，然后再 register 的，后面再仔细看
                 register0(promise);
             } else {
                 try {
-                    eventLoop.execute(new Runnable() { // 封装成一个 task 放到 eventLoop 中
+                    eventLoop.execute(new Runnable() { // 封装成一个 task 放到 eventLoop 中，eventLoop 中的线程会负责调用 register0(promise)
                         @Override
                         public void run() {
                             register0(promise);
@@ -506,28 +506,28 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
-                doRegister();
+                doRegister(); //进行 JDK 底层的操作：Channel 注册到 Selector 上
                 neverRegistered = false;
-                registered = true;
+                registered = true; // 到这里，就算是 registered 了
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
                 pipeline.invokeHandlerAddedIfNeeded();
 
-                safeSetSuccess(promise);
-                pipeline.fireChannelRegistered();
+                safeSetSuccess(promise); // 设置当前 promise 的状态为 success，因为当前 register 方法是在 eventLoop 中的线程中执行的，需要通知提交 register 操作的线程
+                pipeline.fireChannelRegistered(); // 当前的 register 操作已经成功，该事件应该被 pipeline 上所有关心 register 事件的 handler 感知到，往 pipeline 中扔一个事件
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
                 // server socket 的注册不会走进下面的 if，server socket 接受连接创建的 socket 可以走进去，因为 accept 后就 active 了
                 if (isActive()) {
-                    if (firstRegistration) {
+                    if (firstRegistration) { // 如果该 channel 是第一次执行 register，那么 fire ChannelActive 事件
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
                         // again so that we process inbound data.
                         // 对于socketChannel来说就是，注册读事件，可以开始新连接的读操作（建立好连接，下面就可以读了）
                         // See https://github.com/netty/netty/issues/4805
-                        beginRead();
+                        beginRead(); // 该 channel 之前已经 register 过了，这里让该 channel 立马去监听通道中的 OP_READ 事件
                     }
                 }
             } catch (Throwable t) {

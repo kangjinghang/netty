@@ -812,7 +812,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelPipeline fireChannelRegistered() {
-        AbstractChannelHandlerContext.invokeChannelRegistered(head);
+        AbstractChannelHandlerContext.invokeChannelRegistered(head); // 注意这里的传参是 head
         return this;
     }
 
@@ -1333,7 +1333,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise) {
             unsafe.bind(localAddress, promise);
         }
-
+        // HeadContext来执行connect
         @Override
         public void connect(
                 ChannelHandlerContext ctx,
@@ -1380,8 +1380,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) {
-            invokeHandlerAddedIfNeeded();
-            ctx.fireChannelRegistered();
+            invokeHandlerAddedIfNeeded(); // 1. 这一步是 head 对于 channelRegistered 事件的处理。没有我们要关心的
+            ctx.fireChannelRegistered(); // 2. 向后传播 Inbound 事件
         }
 
         @Override

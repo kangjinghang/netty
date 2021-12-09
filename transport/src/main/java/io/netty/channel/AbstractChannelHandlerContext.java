@@ -139,10 +139,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     public String name() {
         return name;
     }
-
+    // pipeline.fireChannelRegistered() 是将 channelRegistered 事件抛到 pipeline 中，pipeline 中的 handlers 准备处理该事件。而 context.fireChannelRegistered() 是一个 handler 处理完了以后，向后传播给下一个 handler。
     @Override
     public ChannelHandlerContext fireChannelRegistered() {
-        invokeChannelRegistered(findContextInbound(MASK_CHANNEL_REGISTERED));
+        invokeChannelRegistered(findContextInbound(MASK_CHANNEL_REGISTERED)); // 沿着 pipeline 找到下一个 支持 REGISTERED 回调类型的 handler
         return this;
     }
 

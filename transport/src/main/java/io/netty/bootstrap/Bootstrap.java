@@ -247,9 +247,9 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
             @Override
             public void run() {
                 if (localAddress == null) {
-                    channel.connect(remoteAddress, connectPromise);
+                    channel.connect(remoteAddress, connectPromise); // connect 操作是交给 pipeline 来执行的
                 } else {
-                    channel.connect(remoteAddress, localAddress, connectPromise);
+                    channel.connect(remoteAddress, localAddress, connectPromise); // connect 操作是交给 pipeline 来执行的
                 }
                 connectPromise.addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
             }

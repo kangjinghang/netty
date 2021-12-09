@@ -140,7 +140,7 @@ public final class ObjectUtil {
      * Otherwise, returns the argument.
      */
     public static int checkPositiveOrZero(int i, String name) {
-        if (i < INT_ZERO) {
+        if (i < INT_ZERO) { // 这个是最大缓存容量大小 这里默认是32K
             throw new IllegalArgumentException(name + " : " + i + " (expected: >= 0)");
         }
         return i;

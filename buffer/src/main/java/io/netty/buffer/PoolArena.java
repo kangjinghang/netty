@@ -78,11 +78,11 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
         directMemoryCacheAlignment = cacheAlignment;
 
         numSmallSubpagePools = nSubpages;
-        smallSubpagePools = newSubpagePoolArray(numSmallSubpagePools);
+        smallSubpagePools = newSubpagePoolArray(numSmallSubpagePools);  // subPage 双向链表 numSmallSubpagePools = 4 也可以理解为 512 << 4 = 8192（Small最大值）  所以是 4
         for (int i = 0; i < smallSubpagePools.length; i ++) {
-            smallSubpagePools[i] = newSubpagePoolHead();
+            smallSubpagePools[i] = newSubpagePoolHead(); // 初始化链表
         }
-
+        // chunk的链表 随着chunk使用率在这几个链表下转义
         q100 = new PoolChunkList<T>(this, null, 100, Integer.MAX_VALUE, chunkSize);
         q075 = new PoolChunkList<T>(this, q100, 75, 100, chunkSize);
         q050 = new PoolChunkList<T>(this, q075, 50, 100, chunkSize);
@@ -122,15 +122,15 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     abstract boolean isDirect();
 
     PooledByteBuf<T> allocate(PoolThreadCache cache, int reqCapacity, int maxCapacity) {
-        PooledByteBuf<T> buf = newByteBuf(maxCapacity);
-        allocate(cache, buf, reqCapacity);
+        PooledByteBuf<T> buf = newByteBuf(maxCapacity); // 初始化一块容量为 2^31 - 1的ByteBuf
+        allocate(cache, buf, reqCapacity); // reqCapacity = 1024  进入分配逻辑
         return buf;
     }
 
     private void allocate(PoolThreadCache cache, PooledByteBuf<T> buf, final int reqCapacity) {
-        final int sizeIdx = size2SizeIdx(reqCapacity);
+        final int sizeIdx = size2SizeIdx(reqCapacity); // 对请求的大小进行校准
 
-        if (sizeIdx <= smallMaxSizeIdx) {
+        if (sizeIdx <= smallMaxSizeIdx) { // capacity < pageSize 判断校准之后的请求大小 是否小于 8k
             tcacheAllocateSmall(cache, buf, reqCapacity, sizeIdx);
         } else if (sizeIdx < nSizes) {
             tcacheAllocateNormal(cache, buf, reqCapacity, sizeIdx);

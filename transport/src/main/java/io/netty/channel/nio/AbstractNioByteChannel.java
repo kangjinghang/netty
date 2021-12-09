@@ -142,10 +142,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return;
             }
             final ChannelPipeline pipeline = pipeline();
-            final ByteBufAllocator allocator = config.getAllocator(); // 创建ByteBuf分配器
+            final ByteBufAllocator allocator = config.getAllocator(); // 获取缓冲区分配器
             // io.netty.channel.DefaultChannelConfig 中设置 RecvByteBufAllocator ，默认 AdaptiveRecvByteBufAllocator
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
-            allocHandle.reset(config);
+            allocHandle.reset(config); // 重置一些变量
 
             ByteBuf byteBuf = null;
             boolean close = false;
@@ -155,7 +155,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     byteBuf = allocHandle.allocate(allocator);
                     // 读并且记录读了多少，如果读满了，下次continue的话就直接扩容。
                     allocHandle.lastBytesRead(doReadBytes(byteBuf)); // doReadBytes(byteBuf)，委托到所在的外部类NioSocketChannel
-                    if (allocHandle.lastBytesRead() <= 0) {
+                    if (allocHandle.lastBytesRead() <= 0) { // 没有读取到数据，则释放缓冲区
                         // nothing was read. release the buffer. 数据清理
                         byteBuf.release();
                         byteBuf = null;
@@ -167,7 +167,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                         break;
                     }
                     // 记录一下读了几次，仅仅一次
-                    allocHandle.incMessagesRead(1);
+                    allocHandle.incMessagesRead(1); // 读取的总信息++
                     readPending = false;
                     // 触发事件，将会引发pipeline的读事件传播，pipeline上执行，业务逻辑的处理就是在这个地方，将得到的数据 byteBuf 传递出去
                     pipeline.fireChannelRead(byteBuf);

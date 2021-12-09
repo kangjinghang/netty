@@ -41,20 +41,20 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
     private static final int INDEX_INCREMENT = 4;
     private static final int INDEX_DECREMENT = 1;
-
-    private static final int[] SIZE_TABLE;
+    // 因为AdaptiveRecvByteBufAllocator作用是可自动适配每次读事件使用的buffer的大小。这样当需要对buffer大小做调整时，只要根据一定逻辑从SIZE_TABLE中取出值，然后根据该值创建新buffer即可
+    private static final int[] SIZE_TABLE;  // 为预定义好的以从小到大的顺序设定的可分配缓冲区的大小值的数组
 
     static {
         List<Integer> sizeTable = new ArrayList<Integer>();
-        for (int i = 16; i < 512; i += 16) {
+        for (int i = 16; i < 512; i += 16) { // 依次往sizeTable添加元素：[16 , (512-16)]之间16的倍数。即，16、32、48...496
             sizeTable.add(i);
         }
-
+        // 再往sizeTable中添加元素：[512 , 512 * (2^N))，N > 1; 直到数值超过Integer的限制(2^31 - 1)
         // Suppress a warning since i becomes negative when an integer overflow happens
         for (int i = 512; i > 0; i <<= 1) { // lgtm[java/constant-comparison]
             sizeTable.add(i);
         }
-
+        // 根据sizeTable长度构建一个静态成员常量数组SIZE_TABLE，并将sizeTable中的元素赋值给SIZE_TABLE数组
         SIZE_TABLE = new int[sizeTable.size()];
         for (int i = 0; i < SIZE_TABLE.length; i ++) {
             SIZE_TABLE[i] = sizeTable.get(i);

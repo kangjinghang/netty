@@ -24,7 +24,7 @@ final class DefaultSelectStrategy implements SelectStrategy {
     static final SelectStrategy INSTANCE = new DefaultSelectStrategy();
 
     private DefaultSelectStrategy() { }
-
+    // 默认策略是：如果有普通任务待执行，使用selectNow()；否则使用select(boolean oldWakenUp)
     @Override
     public int calculateStrategy(IntSupplier selectSupplier, boolean hasTasks) throws Exception {
         return hasTasks ? selectSupplier.get() : SelectStrategy.SELECT;

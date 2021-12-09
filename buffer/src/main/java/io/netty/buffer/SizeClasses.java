@@ -96,10 +96,10 @@ abstract class SizeClasses implements SizeClassesMetric {
     private static final byte no = 0, yes = 1;
 
     protected SizeClasses(int pageSize, int pageShifts, int chunkSize, int directMemoryCacheAlignment) {
-        this.pageSize = pageSize;
-        this.pageShifts = pageShifts;
-        this.chunkSize = chunkSize;
-        this.directMemoryCacheAlignment = directMemoryCacheAlignment;
+        this.pageSize = pageSize; // 这个是8192
+        this.pageShifts = pageShifts; // 用于辅助计算的 13  ===> 2 ^ 13 = 8192
+        this.chunkSize = chunkSize; // 16M  chunk 大小
+        this.directMemoryCacheAlignment = directMemoryCacheAlignment; // 对齐基准
 
         int group = log2(chunkSize) + 1 - LOG2_QUANTUM;
 

@@ -37,7 +37,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
                     return o1.compareTo(o2);
                 }
             };
-
+    // 一个标记任务
    static final Runnable WAKEUP_TASK = new Runnable() {
        @Override
        public void run() { } // Do nothing
