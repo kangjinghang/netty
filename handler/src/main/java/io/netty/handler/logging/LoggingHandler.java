@@ -41,12 +41,12 @@ import static io.netty.util.internal.StringUtil.NEWLINE;
 @SuppressWarnings({ "StringConcatenationInsideStringBufferAppend", "StringBufferReplaceableByString" })
 public class LoggingHandler extends ChannelDuplexHandler {
 
-    private static final LogLevel DEFAULT_LEVEL = LogLevel.DEBUG;
+    private static final LogLevel DEFAULT_LEVEL = LogLevel.DEBUG; // 默认级别为Debug
 
-    protected final InternalLogger logger;
-    protected final InternalLogLevel internalLevel;
+    protected final InternalLogger logger; // 实际使用的日志处理，slf4j、log4j等
+    protected final InternalLogLevel internalLevel; // 日志框架使用的日志级别
 
-    private final LogLevel level;
+    private final LogLevel level; // Netty使用的日志级别
     private final ByteBufFormat byteBufFormat;
 
     /**

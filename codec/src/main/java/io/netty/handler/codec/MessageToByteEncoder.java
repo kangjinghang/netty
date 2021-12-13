@@ -45,8 +45,8 @@ import io.netty.util.internal.TypeParameterMatcher;
  */
 public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdapter {
 
-    private final TypeParameterMatcher matcher;
-    private final boolean preferDirect;
+    private final TypeParameterMatcher matcher; // 检测泛型参数是否是期待的类型，比如说，如果需要编码String类的POJO对象，Matcher会确保 write() 传入的参数 Object 的实际切确类型为 String
+    private final boolean preferDirect; // 是否使用内核的DirectedByteBuf
 
     /**
      * see {@link #MessageToByteEncoder(boolean)} with {@code true} as boolean parameter.
@@ -111,7 +111,7 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
 
                 if (buf.isReadable()) { // 5.buf到这里已经装载着数据，于是把该buf往前丢，直到head节点
                     ctx.write(buf, promise);
-                } else {
+                } else { // 没有需要写的数据，也有可能是用户编码错误
                     buf.release();
                     ctx.write(Unpooled.EMPTY_BUFFER, promise);
                 }
@@ -137,9 +137,9 @@ public abstract class MessageToByteEncoder<I> extends ChannelOutboundHandlerAdap
     protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, @SuppressWarnings("unused") I msg,
                                boolean preferDirect) throws Exception {
         if (preferDirect) {
-            return ctx.alloc().ioBuffer();
+            return ctx.alloc().ioBuffer(); // 内核直接缓存
         } else {
-            return ctx.alloc().heapBuffer();
+            return ctx.alloc().heapBuffer(); // JAVA队缓存
         }
     }
 

@@ -55,7 +55,7 @@ public abstract class ChannelHandlerAdapter implements ChannelHandler {
         Map<Class<?>, Boolean> cache = InternalThreadLocalMap.get().handlerSharableCache(); // ThreadLocal来缓存Handler的状态
         Boolean sharable = cache.get(clazz);
         if (sharable == null) {
-            sharable = clazz.isAnnotationPresent(Sharable.class);
+            sharable = clazz.isAnnotationPresent(Sharable.class); // Handler是否存在Sharable注解
             cache.put(clazz, sharable);
         }
         return sharable;

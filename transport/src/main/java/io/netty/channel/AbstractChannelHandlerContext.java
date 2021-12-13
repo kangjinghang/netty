@@ -61,7 +61,7 @@ import static io.netty.channel.ChannelHandlerMask.mask;
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannelHandlerContext.class);
-    volatile AbstractChannelHandlerContext next;
+    volatile AbstractChannelHandlerContext next; //  Context形成双向链表，next和prev分别是后继节点和前驱节点
     volatile AbstractChannelHandlerContext prev;
 
     private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER =
@@ -70,36 +70,36 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     /**
      * {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} is about to be called.
      */
-    private static final int ADD_PENDING = 1;
+    private static final int ADD_PENDING = 1; // 对应Handler的handlerAdded方法将要被调用但还未调用
     /**
      * {@link ChannelHandler#handlerAdded(ChannelHandlerContext)} was called.
      */
-    private static final int ADD_COMPLETE = 2;
+    private static final int ADD_COMPLETE = 2; // 对应Handler的handlerAdded方法被调用
     /**
      * {@link ChannelHandler#handlerRemoved(ChannelHandlerContext)} was called.
      */
-    private static final int REMOVE_COMPLETE = 3;
+    private static final int REMOVE_COMPLETE = 3;  // 对应Handler的handlerRemoved方法被调用
     /**
      * Neither {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}
      * nor {@link ChannelHandler#handlerRemoved(ChannelHandlerContext)} was called.
      */
-    private static final int INIT = 0;
+    private static final int INIT = 0; // 初始状态
 
     private final DefaultChannelPipeline pipeline;
     private final String name;
-    private final boolean ordered;
+    private final boolean ordered; // 事件顺序标记
     private final int executionMask; // context关联的handler对象支持回调的事件类型
 
     // Will be set to null if no child executor should be used, otherwise it will be set to the
     // child executor.
-    final EventExecutor executor;
+    final EventExecutor executor; // 事件执行线程
     private ChannelFuture succeededFuture;
 
     // Lazily instantiated tasks used to trigger events to a handler with different executor.
     // There is no need to make this volatile as at worse it will just create a few more instances then needed.
     private Tasks invokeTasks;
 
-    private volatile int handlerState = INIT;
+    private volatile int handlerState = INIT; // 状态
 
     AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor executor,
                                   String name, Class<? extends ChannelHandler> handlerClass) {
@@ -108,7 +108,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         this.executor = executor;
         this.executionMask = mask(handlerClass); // 调用ChannelHandlerMask#mask()，得到context关联的handler对象支持回调的事件类型，默认情况下，ChannelInboundHandler和ChannelOutboundHandler支持上述MASK_ALL_INBOUND和MASK_ALL_OUTBOUND所表示的事件。
         // Its ordered if its driven by the EventLoop or the given Executor is an instanceof OrderedEventExecutor.
-        ordered = executor == null || executor instanceof OrderedEventExecutor;
+        ordered = executor == null || executor instanceof OrderedEventExecutor; // 只有执行线程为EventLoop或者标记为OrderedEventExecutor才是顺序的
     }
 
     @Override
@@ -961,10 +961,10 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
      * This is needed as {@link DefaultChannelPipeline} may already put the {@link ChannelHandler} in the linked-list
      * but not called {@link ChannelHandler#handlerAdded(ChannelHandlerContext)}.
      */
-    private boolean invokeHandler() {
+    private boolean invokeHandler() { // 保证了ChannelPipeline的线程安全性，由此用户可以随意增加删除Handler
         // Store in local variable to reduce volatile reads.
-        int handlerState = this.handlerState;
-        return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING);
+        int handlerState = this.handlerState; // handlerState为volatile变量，存储为本地变量，以便减少volatile读
+        return handlerState == ADD_COMPLETE || (!ordered && handlerState == ADD_PENDING); // 当一个处理器还没有调用HandlerAdded方法时，只有处理器的执行线程是非顺序线程池的实例才能执行业务处理逻辑；否则必须等待已调用handlerAdded方法，才能处理业务逻辑
     }
 
     @Override

@@ -525,8 +525,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             } finally {
                 // Always handle shutdown even if the loop processing threw an exception.
                 try {
-                    if (isShuttingDown()) { // 检测用户是否要终止线程
-                        closeAll();
+                    if (isShuttingDown()) { // 检测用户是否要终止线程，比如shutdownGracefully
+                        closeAll(); // 关闭注册的channel
                         if (confirmShutdown()) {
                             return;
                         }

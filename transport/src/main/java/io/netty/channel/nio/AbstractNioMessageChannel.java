@@ -78,10 +78,10 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 try {
                     do { // 委托到所在的外部类NioSocketChannel，doReadMessages方法不断地读取消息，用 readBuf 作为容器，读取的是一个个连接
                         int localRead = doReadMessages(readBuf); // Message的含义我们可以当作是一个SelectableChannel，读的意思就是accept一个SelectableChannel
-                        if (localRead == 0) {
+                        if (localRead == 0) { // 没有数据可读
                             break;
                         }
-                        if (localRead < 0) {
+                        if (localRead < 0) { // 读取出错
                             closed = true;
                             break;
                         }
@@ -94,23 +94,23 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
 
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
-                    readPending = false;
+                    readPending = false; // 已没有底层读事件
                     // 创建的结果（socketChannel）通过 fireChannelRead 传播出去了，就是各种 handler 的串行执行
                     pipeline.fireChannelRead(readBuf.get(i));
                 }
                 readBuf.clear();
                 allocHandle.readComplete();
-                pipeline.fireChannelReadComplete();
+                pipeline.fireChannelReadComplete();  // 触发ChannelReadComplete事件，用户处理
 
                 if (exception != null) {
-                    closed = closeOnReadError(exception);
+                    closed = closeOnReadError(exception); // ServerChannel异常也不能关闭，应该恢复读取下一个客户端
 
                     pipeline.fireExceptionCaught(exception);
                 }
 
                 if (closed) {
                     inputShutdown = true;
-                    if (isOpen()) {
+                    if (isOpen()) { // 非serverChannel且打开则关闭
                         close(voidPromise());
                     }
                 }
@@ -121,7 +121,7 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
                 // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
                 //
                 // See https://github.com/netty/netty/issues/2254
-                if (!readPending && !config.isAutoRead()) {
+                if (!readPending && !config.isAutoRead()) { // 既没有配置autoRead也没有底层读事件进行
                     removeReadOp();
                 }
             }

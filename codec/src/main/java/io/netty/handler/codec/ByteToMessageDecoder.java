@@ -91,8 +91,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             }
             try {
                 final int required = in.readableBytes();
-                if (required > cumulation.maxWritableBytes() ||
-                        (required > cumulation.maxFastWritableBytes() && cumulation.refCnt() > 1) ||
+                if (required > cumulation.maxWritableBytes() || // 累积区容量不够容纳数据
+                        (required > cumulation.maxFastWritableBytes() && cumulation.refCnt() > 1) || // 用户使用了slice().retain()或duplicate().retain()使refCnt增加
                         cumulation.isReadOnly()) {
                     // Expand cumulation (by replacing it) under the following conditions:
                     // - cumulation cannot be resized to accommodate the additional data
@@ -162,8 +162,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     // 大的字节容器
     ByteBuf cumulation;
     private Cumulator cumulator = MERGE_CUMULATOR;
-    private boolean singleDecode;
-    private boolean first;
+    private boolean singleDecode; // 设置为true后每个channelRead事件只解码出一个结果，某些特殊协议使用
+    private boolean first; // 是否首个消息
 
     /**
      * This flag is used to determine if we need to call {@link ChannelHandlerContext#read()} to consume more data
@@ -180,7 +180,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      * </ul>
      */
     private byte decodeState = STATE_INIT;
-    private int discardAfterReads = 16;
+    private int discardAfterReads = 16; // 累积区不丢弃字节的最大次数，16次后开始丢弃
     private int numReads; // 正常来说在channelReadComplete的时候会重置为0，每channelRead会进行++，直到达到discardAfterReads
 
     protected ByteToMessageDecoder() {
@@ -255,17 +255,17 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         ByteBuf buf = cumulation;
         if (buf != null) {
             // Directly set this to null so we are sure we not access it in any other method here anymore.
-            cumulation = null;
+            cumulation = null; // 释放累积区，GC回收
             numReads = 0;
             int readable = buf.readableBytes();
             if (readable > 0) {
-                ctx.fireChannelRead(buf);
+                ctx.fireChannelRead(buf); // 解码器已被删除故不再解码，只将数据传播到下一个Handler
                 ctx.fireChannelReadComplete();
             } else {
                 buf.release();
             }
         }
-        handlerRemoved0(ctx);
+        handlerRemoved0(ctx); // 用户可进行的自定义处理
     }
 
     /**
@@ -276,10 +276,10 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        if (msg instanceof ByteBuf) {
-            CodecOutputList out = CodecOutputList.newInstance();
+        if (msg instanceof ByteBuf) {  // 只对ByteBuf处理即只对字节数据进行处理
+            CodecOutputList out = CodecOutputList.newInstance(); // 解码结果列表
             try { // 1.累加数据
-                first = cumulation == null;
+                first = cumulation == null; // 累积区为空表示首次解码
                 cumulation = cumulator.cumulate(ctx.alloc(),
                         // 是第一次读时，返回空的buffer，否则放到积累器中
                         first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
@@ -347,7 +347,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         ctx.fireChannelReadComplete();
     }
     // 做一次压缩，有效数据段整体移到容器首部，就是把ByteBuf里首部的readed移除，后面的unreaded和writable部分移动到首部
-    protected final void discardSomeReadBytes() {
+    protected final void discardSomeReadBytes() { // 累积区的refCnt() == 1时才丢弃数据是因为：如果用户使用了slice().retain()和duplicate().retain()使refCnt>1，表明该累积区还在被用户使用，丢弃数据可能导致用户的困惑，所以须确定用户不再使用该累积区的已读数据，此时才丢弃。
         if (cumulation != null && !first && cumulation.refCnt() == 1) {
             // discard some bytes if possible to make more room in the
             // buffer but only if the refCnt == 1  as otherwise the user may have
@@ -439,7 +439,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             while (in.isReadable()) {
                 final int outSize = out.size();
 
-                if (outSize > 0) {
+                if (outSize > 0) { // 解码出消息就立即处理，防止消息等待
                     fireChannelRead(ctx, out, outSize);
                     out.clear();
 
@@ -448,7 +448,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                     //
                     // See:
                     // - https://github.com/netty/netty/issues/4635
-                    if (ctx.isRemoved()) {
+                    if (ctx.isRemoved()) { // 用户主动删除该Handler，继续操作in是不安全的
                         break;
                     }
                 }

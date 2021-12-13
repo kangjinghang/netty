@@ -477,7 +477,7 @@ public class LengthFieldBasedFrameDecoder extends ByteToMessageDecoder {
             // the frame was too large.
             long tooLongFrameLength = this.tooLongFrameLength;
             this.tooLongFrameLength = 0;
-            discardingTooLongFrame = false;
+            discardingTooLongFrame = false; // 由于已经丢弃所有数据，关闭丢弃模式
             if (!failFast || firstDetectionOfTooLongFrame) { // 如果没有设置快速失败，或者设置了快速失败并且是第一次检测到大包错误，抛出异常，让handler去处理
                 fail(tooLongFrameLength);
             }

@@ -180,13 +180,13 @@ public interface ChannelHandler {
     /**
      * Gets called after the {@link ChannelHandler} was added to the actual context and it's ready to handle events.
      */
-    void handlerAdded(ChannelHandlerContext ctx) throws Exception;
+    void handlerAdded(ChannelHandlerContext ctx) throws Exception; // Handler本身被添加到ChannelPipeline时调用
 
     /**
      * Gets called after the {@link ChannelHandler} was removed from the actual context and it doesn't handle events
      * anymore.
      */
-    void handlerRemoved(ChannelHandlerContext ctx) throws Exception;
+    void handlerRemoved(ChannelHandlerContext ctx) throws Exception; // Handler本身被从ChannelPipeline中删除时调用
 
     /**
      * Gets called if a {@link Throwable} was thrown.
@@ -195,7 +195,7 @@ public interface ChannelHandler {
      * implement the method there.
      */
     @Deprecated
-    void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception;
+    void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception; // 发生异常时调用
 
     /**
      * Indicates that the same instance of the annotated {@link ChannelHandler}

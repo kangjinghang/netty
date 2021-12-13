@@ -102,7 +102,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             if (!isInputShutdown0()) {
                 // 是否支持半关？如果是，关闭读，触发事件
                 if (isAllowHalfClosure(config())) {
-                    shutdownInput();
+                    shutdownInput(); // 远端关闭此时设置Channel的输入源关闭
                     pipeline.fireUserEventTriggered(ChannelInputShutdownEvent.INSTANCE);
                 } else {
                     close(voidPromise());
@@ -115,11 +115,11 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
         private void handleReadException(ChannelPipeline pipeline, ByteBuf byteBuf, Throwable cause, boolean close,
                 RecvByteBufAllocator.Handle allocHandle) {
-            if (byteBuf != null) {
-                if (byteBuf.isReadable()) {
+            if (byteBuf != null) { // 已读取到数据
+                if (byteBuf.isReadable()) { // 数据可读
                     readPending = false;
                     pipeline.fireChannelRead(byteBuf);
-                } else {
+                } else { // 数据不可读
                     byteBuf.release();
                 }
             }
@@ -159,7 +159,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                         // nothing was read. release the buffer. 数据清理
                         byteBuf.release();
                         byteBuf = null;
-                        close = allocHandle.lastBytesRead() < 0;
+                        close = allocHandle.lastBytesRead() < 0; // 读取数据量为负数表示对端已经关闭
                         if (close) {
                             // There is nothing left to read as we received an EOF.
                             readPending = false;
@@ -190,7 +190,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
                 //
                 // See https://github.com/netty/netty/issues/2254
-                if (!readPending && !config.isAutoRead()) {
+                if (!readPending && !config.isAutoRead()) { // 此时读操作不被允许，既没有配置autoRead也没有底层读事件进行
                     removeReadOp();
                 }
             }
@@ -228,9 +228,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                 return 0;
             }
 
-            final int localFlushedAmount = doWriteBytes(buf); // 将当前节点写出
-            if (localFlushedAmount > 0) {
-                in.progress(localFlushedAmount);
+            final int localFlushedAmount = doWriteBytes(buf); // 将当前节点写出，模板方法，子类实现细节
+            if (localFlushedAmount > 0) { // NIO在非阻塞模式下写操作可能返回0表示未写入数据
+                in.progress(localFlushedAmount); // 记录进度
                 if (!buf.isReadable()) {
                     in.remove(); // 写完之后，将当前节点删除
                 }
@@ -253,7 +253,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             }
         } else {
             // Should not reach here.
-            throw new Error();
+            throw new Error();  // 其他类型不支持
         }
         return WRITE_STATUS_SNDBUF_FULL;
     }
@@ -263,9 +263,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         int writeSpinCount = config().getWriteSpinCount(); // 1.拿到自旋锁迭代次数
         do {
             Object msg = in.current(); // 2.拿到第一个需要flush的节点的数据
-            if (msg == null) {
+            if (msg == null) { // 数据已全部写完
                 // Wrote all messages.
-                clearOpWrite();
+                clearOpWrite(); // 清除OP_WRITE事件
                 // Directly return here so incompleteWrite(...) is not called.
                 return;
             }
@@ -297,8 +297,8 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
     protected final void incompleteWrite(boolean setOpWrite) {
         // Did not write completely.
         if (setOpWrite) {
-            setOpWrite();
-        } else {
+            setOpWrite(); // 设置继续关心OP_WRITE事件
+        } else {  // 此时已进行写操作次数writeSpinCount，但并没有写完
             // It is possible that we have set the write OP, woken up by NIO because the socket is writable, and then
             // use our write quantum. In this case we no longer want to set the write OP because the socket is still
             // writable (as far as we know). We will find out next time we attempt to write if the socket is writable
@@ -306,7 +306,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             clearOpWrite();
 
             // Schedule flush again later so other tasks can be picked up in the meantime
-            eventLoop().execute(flushTask);
+            eventLoop().execute(flushTask); // 再次提交一个flush()任务
         }
     }
 

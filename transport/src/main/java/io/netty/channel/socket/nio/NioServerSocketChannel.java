@@ -136,7 +136,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
             javaChannel().socket().bind(localAddress, config.getBacklog());
         }
     }
-
+    // 覆盖了AbstractNioChannel的实现，因为NioServerSocketChannel不支持connect操作，所以不需要连接超时处理。
     @Override
     protected void doClose() throws Exception {
         javaChannel().close();
@@ -148,7 +148,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         SocketChannel ch = SocketUtils.accept(javaChannel()); // 调用jdk的 accept()方法，新建立一条连接。
 
         try {
-            if (ch != null) {
+            if (ch != null) { // 一个NioSocketChannel为一条消息
                 buf.add(new NioSocketChannel(this, ch)); // 封装成自定义的 NioSocketChannel，加入到buf里面
                 return 1;
             }

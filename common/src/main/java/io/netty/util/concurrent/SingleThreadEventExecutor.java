@@ -602,7 +602,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ran = false;
         // Note shutdown hooks can add / remove shutdown hooks.
         while (!shutdownHooks.isEmpty()) {
-            List<Runnable> copy = new ArrayList<Runnable>(shutdownHooks);
+            List<Runnable> copy = new ArrayList<Runnable>(shutdownHooks); // 使用copy是因为shutdwonHook任务中可以添加或删除shutdwonHook任务
             shutdownHooks.clear();
             for (Runnable task: copy) {
                 try {
@@ -621,7 +621,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
         return ran;
     }
-
+    // quietPeriod：静默时间，timeout：超时时间
     @Override
     public Future<?> shutdownGracefully(long quietPeriod, long timeout, TimeUnit unit) {
         ObjectUtil.checkPositiveOrZero(quietPeriod, "quietPeriod"); // 静待时间需要>=0
@@ -654,15 +654,15 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         newState = ST_SHUTTING_DOWN; // 改变状态
                         break;
                     default:
-                        newState = oldState;
-                        wakeup = false;
+                        newState = oldState;  // 已经有一个线程已修改好线程状态
+                        wakeup = false; // 已经有线程唤醒，所以不用再唤醒
                 }
             }
             if (STATE_UPDATER.compareAndSet(this, oldState, newState)) {
-                break;
+                break; // 保证只有一个线程将oldState修改为newState
             }
         }
-        gracefulShutdownQuietPeriod = unit.toNanos(quietPeriod);
+        gracefulShutdownQuietPeriod = unit.toNanos(quietPeriod); // 在default情况下会更新这两个值
         gracefulShutdownTimeout = unit.toNanos(timeout);
 
         if (ensureThreadStarted(oldState)) {
@@ -672,7 +672,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (wakeup) {
             taskQueue.offer(WAKEUP_TASK);
             if (!addTaskWakesUp) {
-                wakeup(inEventLoop);
+                wakeup(inEventLoop); // 唤醒阻塞在阻塞点上的线程，使其从阻塞状态退出
             }
         }
 
@@ -752,32 +752,32 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      */
     protected boolean confirmShutdown() {
         if (!isShuttingDown()) {
-            return false;
+            return false; // 没有调用shutdown相关的方法直接返回
         }
 
-        if (!inEventLoop()) {
+        if (!inEventLoop()) { // 必须是原生线程
             throw new IllegalStateException("must be invoked from an event loop");
         }
         // 取消所有 scheduledTasks
         cancelScheduledTasks();
 
-        if (gracefulShutdownStartTime == 0) {
+        if (gracefulShutdownStartTime == 0) { // 优雅关闭开始时间，这也是一个标记
             gracefulShutdownStartTime = ScheduledFutureTask.nanoTime();
         }
         // 有task/hook在里面，执行他们，并且不让关闭，因为静默期又有任务做了。
-        if (runAllTasks() || runShutdownHooks()) {
+        if (runAllTasks() || runShutdownHooks()) { // 执行完普通任务或者没有普通任务时执行完shutdownHook任务
             if (isShutdown()) {
                 // Executor shut down - no new tasks anymore.
-                return true;
+                return true; // 调用shutdown()方法直接退出
             }
 
             // There were tasks in the queue. Wait a little bit more until no tasks are queued for the quiet period or
             // terminate if the quiet period is 0.
             // See https://github.com/netty/netty/issues/4241
             if (gracefulShutdownQuietPeriod == 0) {
-                return true;
+                return true; // 优雅关闭静默时间为0也直接退出
             }
-            taskQueue.offer(WAKEUP_TASK);
+            taskQueue.offer(WAKEUP_TASK); // 优雅关闭但有未执行任务，唤醒线程执行
             return false;
         }
 
@@ -799,7 +799,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
             return false;
         }
-        // 静默期没有做任务，返回需要关闭。
+        // 静默期没有做任务，返回需要关闭。此时若用户又提交任务则不会被执行
         // No tasks were added for last quiet period - hopefully safe to shut down.
         // (Hopefully because we really cannot make a guarantee that there will be no execute() calls by a user.)
         return true;
@@ -999,14 +999,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 } finally {
                     for (;;) {
                         int oldState = state;
-                        if (oldState >= ST_SHUTTING_DOWN || STATE_UPDATER.compareAndSet(
+                        if (oldState >= ST_SHUTTING_DOWN || STATE_UPDATER.compareAndSet( // 用户调用了关闭的方法或者抛出异常
                                 SingleThreadEventExecutor.this, oldState, ST_SHUTTING_DOWN)) {
-                            break;
+                            break; // 抛出异常也将状态置为ST_SHUTTING_DOWN
                         }
                     }
 
                     // Check if confirmShutdown() was called at the end of the loop.
-                    if (success && gracefulShutdownStartTime == 0) {
+                    if (success && gracefulShutdownStartTime == 0) { // time=0，说明confirmShutdown()方法没有调用，记录日志
                         if (logger.isErrorEnabled()) {
                             logger.error("Buggy " + EventExecutor.class.getSimpleName() + " implementation; " +
                                     SingleThreadEventExecutor.class.getSimpleName() + ".confirmShutdown() must " +
@@ -1019,8 +1019,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                         // is in ST_SHUTTING_DOWN state still accepting tasks which is needed for
                         // graceful shutdown with quietPeriod.
                         for (;;) {
-                            if (confirmShutdown()) {
-                                break;
+                            if (confirmShutdown()) { // 抛出异常时，将普通任务和shutdownHook任务执行完毕
+                                break; // 正常关闭时，结合前述的循环跳出条件
                             }
                         }
 
@@ -1048,14 +1048,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                             // See https://github.com/netty/netty/issues/6596.
                             FastThreadLocal.removeAll();
 
-                            STATE_UPDATER.set(SingleThreadEventExecutor.this, ST_TERMINATED);
+                            STATE_UPDATER.set(SingleThreadEventExecutor.this, ST_TERMINATED); // 线程状态设置为ST_TERMINATED，线程终止
                             threadLock.countDown();
                             int numUserTasks = drainTasks();
-                            if (numUserTasks > 0 && logger.isWarnEnabled()) {
+                            if (numUserTasks > 0 && logger.isWarnEnabled()) { //  关闭时，任务队列中添加了任务，记录日志
                                 logger.warn("An event executor terminated with " +
                                         "non-empty task queue (" + numUserTasks + ')');
                             }
-                            terminationFuture.setSuccess(null);
+                            terminationFuture.setSuccess(null);  // 异步结果设置为成功
                         }
                     }
                 }

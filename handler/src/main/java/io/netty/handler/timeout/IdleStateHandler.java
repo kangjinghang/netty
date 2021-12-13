@@ -109,13 +109,13 @@ public class IdleStateHandler extends ChannelDuplexHandler {
     };
 
     private final boolean observeOutput;
-    private final long readerIdleTimeNanos;
+    private final long readerIdleTimeNanos; // 用户配置的读超时时间
     private final long writerIdleTimeNanos;
     private final long allIdleTimeNanos;
 
-    private Future<?> readerIdleTimeout;
-    private long lastReadTime;
-    private boolean firstReaderIdleEvent = true;
+    private Future<?> readerIdleTimeout;  // 判定超时的调度任务Future
+    private long lastReadTime; // 最近一次读取数据的时间
+    private boolean firstReaderIdleEvent = true; // 是否第一次读超时事件
 
     private Future<?> writerIdleTimeout;
     private long lastWriteTime;
@@ -123,9 +123,9 @@ public class IdleStateHandler extends ChannelDuplexHandler {
 
     private Future<?> allIdleTimeout;
     private boolean firstAllIdleEvent = true;
-
+    // 状态，0 - 无关， 1 - 初始化完成 2 - 已被销毁
     private byte state; // 0 - none, 1 - initialized, 2 - destroyed
-    private boolean reading;
+    private boolean reading; // 是否正在读取
 
     private long lastChangeCheckTimeStamp;
     private int lastMessageHashCode;
@@ -309,8 +309,8 @@ public class IdleStateHandler extends ChannelDuplexHandler {
         // Avoid the case where destroy() is called before scheduling timeouts.
         // See: https://github.com/netty/netty/issues/143
         switch (state) {
-        case 1:
-        case 2:
+        case 1: // 初始化进行中或者已完成
+        case 2: // 销毁进行中或者已完成
             return;
         default:
              break;
@@ -349,10 +349,10 @@ public class IdleStateHandler extends ChannelDuplexHandler {
     }
 
     private void destroy() {
-        state = 2;
+        state = 2; // 这里结合initialize对比理解
 
         if (readerIdleTimeout != null) {
-            readerIdleTimeout.cancel(false);
+            readerIdleTimeout.cancel(false);  // 取消调度任务，并置null
             readerIdleTimeout = null;
         }
         if (writerIdleTimeout != null) {
@@ -496,12 +496,12 @@ public class IdleStateHandler extends ChannelDuplexHandler {
         protected void run(ChannelHandlerContext ctx) {
             long nextDelay = readerIdleTimeNanos;
             if (!reading) {
-                // 计算是否idle的关键
+                // 计算是否idle的关键，nextDelay<=0 说明在设置的超时时间内没有读取数据
                 nextDelay -= ticksInNanos() - lastReadTime;
             }
-
+            // 隐含正在读取时，nextDelay = readerIdleTimeNanos > 0
             if (nextDelay <= 0) {
-                // 空闲了
+                // 空闲了，超时时间已到，则再次调度该任务本身
                 // Reader is idle - set a new timeout and notify the callback.
                 readerIdleTimeout = schedule(ctx, this, readerIdleTimeNanos, TimeUnit.NANOSECONDS);
 
@@ -511,12 +511,12 @@ public class IdleStateHandler extends ChannelDuplexHandler {
 
                 try {
                     IdleStateEvent event = newIdleStateEvent(IdleState.READER_IDLE, first);
-                    channelIdle(ctx, event);
+                    channelIdle(ctx, event); // 模板方法处理
                 } catch (Throwable t) {
                     ctx.fireExceptionCaught(t);
                 }
             } else {
-                // 重新起一个监测task，用nextDelay时间
+                // 重新起一个监测task，用nextDelay时间，注意此处的nextDelay值，会跟随lastReadTime刷新
                 // Read occurred before the timeout - set a new timeout with shorter delay.
                 readerIdleTimeout = schedule(ctx, this, nextDelay, TimeUnit.NANOSECONDS);
             }

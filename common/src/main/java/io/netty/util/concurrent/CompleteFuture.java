@@ -24,12 +24,12 @@ import java.util.concurrent.TimeUnit;
  * A skeletal {@link Future} implementation which represents a {@link Future} which has been completed already.
  */
 public abstract class CompleteFuture<V> extends AbstractFuture<V> {
-
+    // 执行器，执行Listener中定义的操作
     private final EventExecutor executor;
 
     /**
      * Creates a new instance.
-     *
+     * executor是必须的
      * @param executor the {@link EventExecutor} associated with this future
      */
     protected CompleteFuture(EventExecutor executor) {
@@ -46,7 +46,7 @@ public abstract class CompleteFuture<V> extends AbstractFuture<V> {
     @Override
     public Future<V> addListener(GenericFutureListener<? extends Future<? super V>> listener) {
         DefaultPromise.notifyListener(executor(), this, ObjectUtil.checkNotNull(listener, "listener"));
-        return this;
+        return this; // 由于这是一个已完成的Future，所以立即通知Listener执行
     }
 
     @Override
@@ -64,7 +64,7 @@ public abstract class CompleteFuture<V> extends AbstractFuture<V> {
 
     @Override
     public Future<V> removeListener(GenericFutureListener<? extends Future<? super V>> listener) {
-        // NOOP
+        // NOOP 由于已完成，Listener中的操作已完成，没有需要删除的Listener
         return this;
     }
 

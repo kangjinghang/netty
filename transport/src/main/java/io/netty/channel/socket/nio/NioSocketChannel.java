@@ -297,7 +297,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     }
 
     private void doBind0(SocketAddress localAddress) throws Exception {
-        if (PlatformDependent.javaVersion() >= 7) {
+        if (PlatformDependent.javaVersion() >= 7) { // JDK版本1.7以上
             SocketUtils.bind(javaChannel(), localAddress);
         } else {
             SocketUtils.bind(javaChannel().socket(), localAddress);
@@ -314,7 +314,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         try {
             boolean connected = SocketUtils.connect(javaChannel(), remoteAddress);
             if (!connected) {
-                selectionKey().interestOps(SelectionKey.OP_CONNECT);
+                selectionKey().interestOps(SelectionKey.OP_CONNECT); // 设置关心OP_CONNECT事件，事件就绪时调用finishConnect()
             }
             success = true;
             return connected;
@@ -339,7 +339,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
     @Override
     protected void doClose() throws Exception {
-        super.doClose();
+        super.doClose(); // AbstractNioChannel中关于连接超时的处理
         javaChannel().close();
     }
 
@@ -400,11 +400,11 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             // Always use nioBuffers() to workaround data-corruption.
             // See https://github.com/netty/netty/issues/2761
             switch (nioBufferCnt) {
-                case 0:
+                case 0: // 没有ByteBuffer，也就是只有FileRegion
                     // We have something else beside ByteBuffers to write so fallback to normal writes.
                     writeSpinCount -= doWrite0(in);
                     break;
-                case 1: {
+                case 1: { // 只有一个ByteBuffer
                     // Only one ByteBuf so use non-gathering write
                     // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
                     // to check if the total size of all the buffers is non-zero.
@@ -421,7 +421,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     --writeSpinCount; // 减少写的次数
                     break;
                 }
-                default: {
+                default: { // 多个ByteBuffer，采用gathering方法处理
                     // Zero length buffers are not added to nioBuffers by ChannelOutboundBuffer, so there is no need
                     // to check if the total size of all the buffers is non-zero.
                     // We limit the max amount to int above so cast is safe
@@ -435,7 +435,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     // Casting to int is safe because we limit the total amount of data in the nioBuffers to int above.
                     adjustMaxBytesPerGatheringWrite((int) attemptedBytes, (int) localWrittenBytes,
                             maxBytesPerGatheringWrite);
-                    in.removeBytes(localWrittenBytes);
+                    in.removeBytes(localWrittenBytes);  // 清理缓冲区
                     --writeSpinCount;
                     break;
                 }
@@ -462,7 +462,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     // 需要逗留到数据收发完成或者设置的时间，所以提交到另外的 Executor 中执行
                     // 提前 deregister 掉，逗留期不接受新的数据了
                     // deregister 包含 selection key 的 cancel 的原因之一。
-                    doDeregister();
+                    doDeregister();  // 取消选择键selectionKey
                     return GlobalEventExecutor.INSTANCE;
                 }
             } catch (Throwable ignore) {

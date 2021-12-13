@@ -32,7 +32,7 @@ import io.netty.util.concurrent.GenericFutureListener;
  * to perform a blocking operation on I/O completion, try to execute the
  * operation in a different thread using a thread pool.
  */
-public interface ChannelFutureListener extends GenericFutureListener<ChannelFuture> {
+public interface ChannelFutureListener extends GenericFutureListener<ChannelFuture> { // 并没有扩展GenericFutureListener接口，所以类似于一个标记接口
 
     /**
      * A {@link ChannelFutureListener} that closes the {@link Channel} which is
@@ -41,7 +41,7 @@ public interface ChannelFutureListener extends GenericFutureListener<ChannelFutu
     ChannelFutureListener CLOSE = new ChannelFutureListener() {
         @Override
         public void operationComplete(ChannelFuture future) {
-            future.channel().close();
+            future.channel().close(); // 操作完成时关闭Channel
         }
     };
 
@@ -53,7 +53,7 @@ public interface ChannelFutureListener extends GenericFutureListener<ChannelFutu
         @Override
         public void operationComplete(ChannelFuture future) {
             if (!future.isSuccess()) {
-                future.channel().close();
+                future.channel().close(); // 操作失败时关闭Channel
             }
         }
     };
@@ -66,6 +66,7 @@ public interface ChannelFutureListener extends GenericFutureListener<ChannelFutu
         @Override
         public void operationComplete(ChannelFuture future) {
             if (!future.isSuccess()) {
+                // 操作失败时触发一个ExceptionCaught事件
                 future.channel().pipeline().fireExceptionCaught(future.cause());
             }
         }
