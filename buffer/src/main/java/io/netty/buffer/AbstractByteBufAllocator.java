@@ -257,23 +257,23 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
                     "minNewCapacity: %d (expected: not greater than maxCapacity(%d)",
                     minNewCapacity, maxCapacity));
         }
-        final int threshold = CALCULATE_THRESHOLD; // 4 MiB page
+        final int threshold = CALCULATE_THRESHOLD; // 4 MiB page，4MB的阈值
 
         if (minNewCapacity == threshold) {
             return threshold;
         }
 
         // If over threshold, do not double but just increase by threshold.
-        if (minNewCapacity > threshold) {
+        if (minNewCapacity > threshold) { // 所需的最小容量超过阈值4MB，每次增加4MB
             int newCapacity = minNewCapacity / threshold * threshold;
             if (newCapacity > maxCapacity - threshold) {
-                newCapacity = maxCapacity;
+                newCapacity = maxCapacity; // 超过最大容量不再扩增
             } else {
-                newCapacity += threshold;
+                newCapacity += threshold; // 增加4MB
             }
             return newCapacity;
         }
-
+        // 此时所需的最小容量小于阈值4MB，容量翻倍
         // 64 <= newCapacity is a power of 2 <= threshold
         final int newCapacity = MathUtil.findNextPositivePowerOfTwo(Math.max(minNewCapacity, 64));
         return Math.min(newCapacity, maxCapacity);

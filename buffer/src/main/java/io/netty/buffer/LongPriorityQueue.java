@@ -25,7 +25,7 @@ final class LongPriorityQueue {
     public static final int NO_VALUE = -1;
     private long[] array = new long[9];
     private int size;
-
+    // 存放的是handle
     public void offer(long handle) {
         if (handle == NO_VALUE) {
             throw new IllegalArgumentException("The NO_VALUE (" + NO_VALUE + ") cannot be added to the queue.");

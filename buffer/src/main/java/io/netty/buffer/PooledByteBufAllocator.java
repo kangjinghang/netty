@@ -387,13 +387,13 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
     @Override
     protected ByteBuf newDirectBuffer(int initialCapacity, int maxCapacity) {
-        PoolThreadCache cache = threadCache.get(); // 获取缓存，这里的get方法会调用初始化方法 initialValue() ，会实例化 PoolThreadCache
+        PoolThreadCache cache = threadCache.get(); //  从当前线程中获取缓存，这里的get方法会调用初始化方法 initialValue() ，会实例化 PoolThreadCache
         PoolArena<ByteBuffer> directArena = cache.directArena;  // 获取直接内存竞技场
 
         final ByteBuf buf;
         if (directArena != null) {
-            buf = directArena.allocate(cache, initialCapacity, maxCapacity); // 分配方法
-        } else { // 如果缓存中没有，就用UnpooledDirectByteBuf创建
+            buf = directArena.allocate(cache, initialCapacity, maxCapacity); // 在当前线程内存池上分配内存
+        } else { // 如果缓存中没有，就只能用UnpooledDirectByteBuf创建了
             buf = PlatformDependent.hasUnsafe() ?
                     UnsafeByteBufUtil.newUnsafeDirectByteBuf(this, initialCapacity, maxCapacity) :
                     new UnpooledDirectByteBuf(this, initialCapacity, maxCapacity);
@@ -506,9 +506,9 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
         @Override
         protected synchronized PoolThreadCache initialValue() { // 在执行get方法的时候会执行initialValue（）方法，来初始化数据。
-            final PoolArena<byte[]> heapArena = leastUsedArena(heapArenas); // // 堆内存Arena；这里是比较所有PoolArena看下哪个被使用最少，找到最少那个，使得线程均等使用Arena。
-            final PoolArena<ByteBuffer> directArena = leastUsedArena(directArenas); // 直接内存Arena
-
+            final PoolArena<byte[]> heapArena = leastUsedArena(heapArenas); // 堆内存Arena；这里是比较所有PoolArena看下哪个被使用最少，找到使用率最少的那个，使得线程均等使用Arena。
+            final PoolArena<ByteBuffer> directArena = leastUsedArena(directArenas); // 直接内存Arena，也是找到使用率最少的那个，构造PooledByteBufAllocator时默认初始化了8个PoolArena。
+            // 构造PoolThreadCache
             final Thread current = Thread.currentThread();
             if (useCacheForAllThreads || current instanceof FastThreadLocalThread) { // 线程是FastTreadLocalTread 这里在NioEventLoop初始化的时候线程就被封装过了
                 final PoolThreadCache cache = new PoolThreadCache( // 创建一个PoolTreadCache实例

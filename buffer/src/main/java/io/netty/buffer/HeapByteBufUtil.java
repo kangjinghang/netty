@@ -45,7 +45,7 @@ final class HeapByteBufUtil {
     }
 
     static int getInt(byte[] memory, int index) {
-        return  (memory[index]     & 0xff) << 24 |
+        return  (memory[index]     & 0xff) << 24 | // 取前8个bit
                 (memory[index + 1] & 0xff) << 16 |
                 (memory[index + 2] & 0xff) <<  8 |
                 memory[index + 3] & 0xff;

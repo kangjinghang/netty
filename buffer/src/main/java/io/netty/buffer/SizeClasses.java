@@ -147,27 +147,27 @@ abstract class SizeClasses implements SizeClassesMetric {
         int index = 0;
         int size = 0;
 
-        int log2Group = LOG2_QUANTUM;
-        int log2Delta = LOG2_QUANTUM;
-        int ndeltaLimit = 1 << LOG2_SIZE_CLASS_GROUP;
+        int log2Group = LOG2_QUANTUM; // log2Group = LOG2_QUANTUM = 4
+        int log2Delta = LOG2_QUANTUM; // log2Delta = LOG2_QUANTUM = 4
+        int ndeltaLimit = 1 << LOG2_SIZE_CLASS_GROUP; // ndeltaLimit = 1 << 2 = 4，内存块size以4个为一组进行分组
 
         //First small group, nDelta start at 0.
         //first size class is 1 << LOG2_QUANTUM
-        int nDelta = 0;
-        while (nDelta < ndeltaLimit) {
-            size = sizeClass(index++, log2Group, log2Delta, nDelta++);
+        int nDelta = 0; // 初始化第0组
+        while (nDelta < ndeltaLimit) { // nDelta从0开始
+            size = sizeClass(index++, log2Group, log2Delta, nDelta++); // sizeClass方法计算sizeClasses每一行内容
         }
-        log2Group += LOG2_SIZE_CLASS_GROUP;
-
+        log2Group += LOG2_SIZE_CLASS_GROUP; // 第0组后log2Group增加LOG2_SIZE_CLASS_GROUP = 6，而log2Delta = 4 不变
+        // 所以 log2Group += LOG2_SIZE_CLASS_GROUP，等价于 log2Group = log2Delta + LOG2_SIZE_CLASS_GROUP
         //All remaining groups, nDelta start at 1.
-        while (size < chunkSize) {
-            nDelta = 1;
+        while (size < chunkSize) { // 初始化后面的size
+            nDelta = 1; // nDelta从1开始
 
             while (nDelta <= ndeltaLimit && size < chunkSize) {
                 size = sizeClass(index++, log2Group, log2Delta, nDelta++);
                 normalMaxSize = size;
             }
-
+            // 每组log2Group+1，log2Delta+1
             log2Group++;
             log2Delta++;
         }
@@ -186,8 +186,9 @@ abstract class SizeClasses implements SizeClassesMetric {
             isMultiPageSize = yes;
         } else {
             int pageSize = 1 << pageShifts;
-            int size = (1 << log2Group) + (1 << log2Delta) * nDelta;
-
+            int size = (1 << log2Group) + (1 << log2Delta) * nDelta; // 计算公式
+            // 因为上文中可以得到，log2Group = log2Delta + LOG2_SIZE_CLASS_GROUP
+            // 所以，int size = (1 << (log2Delta + LOG2_SIZE_CLASS_GROUP)) + (1 << log2Delta) * nDelta =  (2 ^ LOG2_SIZE_CLASS_GROUP + nDelta) * (1 << log2Delta)
             isMultiPageSize = size == size / pageSize * pageSize? yes : no;
         }
 
@@ -305,33 +306,36 @@ abstract class SizeClasses implements SizeClassesMetric {
         if (size == 0) {
             return 0;
         }
-        if (size > chunkSize) {
+        if (size > chunkSize) { // 大于chunkSize，则返回nSizes，代表申请的是Huge内存块。
             return nSizes;
         }
 
-        if (directMemoryCacheAlignment > 0) {
+        if (directMemoryCacheAlignment > 0) { // directMemoryCacheAlignment默认为0， >0 表示不使用sizeClasses表格，直接将申请内存大小转换为directMemoryCacheAlignment的倍数。
             size = alignSize(size);
         }
-
-        if (size <= lookupMaxSize) {
-            //size-1 / MIN_TINY
+        // SizeClasses将一部分较小的size与对应index记录在size2idxTab作为位图，这里直接查询size2idxTab，避免重复计算
+        if (size <= lookupMaxSize) { // size2idxTab中保存了(size-1)/(2^LOG2_QUANTUM) --> idx的对应关系。
+            //size-1 / MIN_TINY。  从sizeClasses方法可以看到，sizeClasses表格中每个size都是(2^LOG2_QUANTUM) 的倍数。
             return size2idxTab[size - 1 >> LOG2_QUANTUM];
         }
-
-        int x = log2((size << 1) - 1);
-        int shift = x < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM + 1
-                ? 0 : x - (LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM);
-
-        int group = shift << LOG2_SIZE_CLASS_GROUP;
-
+        // 对申请内存大小进行log2的向上取整，就是每组最后一个内存块size。-1是为了避免申请内存大小刚好等于2的指数次幂时被翻倍。
+        int x = log2((size << 1) - 1); // 将log2Group = log2Delta + LOG2_SIZE_CLASS_GROUP，nDelta=2^LOG2_SIZE_CLASS_GROUP代入计算公式，可得lastSize = 1 << (log2Group + 1)，即x = log2Group + 1
+        int shift = x < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM + 1 //  shift，当前在第几组，从0开始（sizeClasses表格中0~3行为第0组，4~7行为第1组，以此类推，不是log2Group）
+                ? 0 : x - (LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM); // x < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM + 1，即log2Group < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM，满足该条件的是第0组的size，这时shift固定是0。
+        //从sizeClasses方法可以看到，除了第0组，都满足shift = log2Group - LOG2_QUANTUM - (LOG2_SIZE_CLASS_GROUP - 1)。
+        int group = shift << LOG2_SIZE_CLASS_GROUP; // group = shift << LOG2_SIZE_CLASS_GROUP，就是该组第一个内存块size的索引
+        // 计算log2Delta。第0组固定是LOG2_QUANTUM。除了第0组，将nDelta = 2^LOG2_SIZE_CLASS_GROUP代入计算公式，lastSize = ( 2^LOG2_SIZE_CLASS_GROUP + 2^LOG2_SIZE_CLASS_GROUP ) * (1 << log2Delta)
+        // lastSize = (1 << log2Delta) << LOG2_SIZE_CLASS_GROUP << 1
         int log2Delta = x < LOG2_SIZE_CLASS_GROUP + LOG2_QUANTUM + 1
                 ? LOG2_QUANTUM : x - LOG2_SIZE_CLASS_GROUP - 1;
-
+        // 前面已经定位到第几组了，下面要找到申请内存大小应分配在该组第几位，这里要找到比申请内存大的最小size。申请内存大小可以理解为上一个size加上一个不大于(1 << log2Delta)的值，即
+        //(nDelta - 1 + 2^LOG2_SIZE_CLASS_GROUP) * (1 << log2Delta) + n， 备注：0 < n <= (1 << log2Delta)。注意，nDelta - 1就是mod
         int deltaInverseMask = -1 << log2Delta;
-        int mod = (size - 1 & deltaInverseMask) >> log2Delta &
-                  (1 << LOG2_SIZE_CLASS_GROUP) - 1;
-
-        return group + mod;
+        int mod = (size - 1 & deltaInverseMask) >> log2Delta & // & deltaInverseMask，将申请内存大小最后log2Delta个bit位设置为0，可以理解为减去n。>> log2Delta，右移log2Delta个bit位，就是除以(1 << log2Delta)，结果就是(nDelta - 1 + 2 ^ LOG2_SIZE_CLASS_GROUP)
+                  (1 << LOG2_SIZE_CLASS_GROUP) - 1; // & (1 << LOG2_SIZE_CLASS_GROUP) - 1， 取最后的LOG2_SIZE_CLASS_GROUP个bit位的值，结果就是mod
+        // size - 1，是为了申请内存等于内存块size时避免分配到下一个内存块size中，即n == (1 << log2Delta)的场景。
+        return group + mod; // 第0组由于log2Group等于log2Delta，代入计算公式如下：1 << log2Delta + (nDelta - 1) * (1 << log2Delta) + n， 备注：0 < n <= (1 << log2Delta)
+        // nDelta * (1 << log2Delta) + n，所以第0组nDelta从0开始，mod = nDelta
     }
 
     @Override
@@ -375,7 +379,7 @@ abstract class SizeClasses implements SizeClassesMetric {
 
     // Round size up to the nearest multiple of alignment.
     private int alignSize(int size) {
-        int delta = size & directMemoryCacheAlignment - 1;
+        int delta = size & directMemoryCacheAlignment - 1; // 计算余数，directMemoryCacheAlignment总是为2的幂次方，delta = size % directMemoryCacheAlignment
         return delta == 0? size : size + directMemoryCacheAlignment - delta;
     }
 

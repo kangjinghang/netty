@@ -37,12 +37,12 @@ import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
  */
 public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
-    private final ByteBufAllocator alloc;
-
+    private final ByteBufAllocator alloc;  // 分配器
+    // 底层NIO直接ByteBuff
     ByteBuffer buffer; // accessed by UnpooledUnsafeNoCleanerDirectByteBuf.reallocateDirect()
-    private ByteBuffer tmpNioBuf;
-    private int capacity;
-    private boolean doNotFree;
+    private ByteBuffer tmpNioBuf;  // 用于IO操作的ByteBuffer
+    private int capacity;  // ByteBuf的容量
+    private boolean doNotFree; // 释放标记，为true时表示不需要释放旧的Buffer
 
     /**
      * Creates a new direct buffer.
@@ -93,9 +93,9 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
-        doNotFree = !doFree;
+        doNotFree = !doFree; // doFree为false时，doNotFree置为true，表示不需要释放原有buffer
         setByteBuffer((slice ? initialBuffer.slice() : initialBuffer).order(ByteOrder.BIG_ENDIAN), false);
-        writerIndex(initialCapacity);
+        writerIndex(initialCapacity); // 此时 doNotFree已经为false
     }
 
     /**
@@ -118,9 +118,9 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
             ByteBuffer oldBuffer = this.buffer;
             if (oldBuffer != null) {
                 if (doNotFree) {
-                    doNotFree = false;
+                    doNotFree = false; // 当doNotFree为true时，调用后置为false
                 } else {
-                    freeDirect(oldBuffer);
+                    freeDirect(oldBuffer); // false时都需要freeDirect(oldBuffer)
                 }
             }
         }
@@ -148,9 +148,9 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
             return this;
         }
         int bytesToCopy;
-        if (newCapacity > oldCapacity) {
+        if (newCapacity > oldCapacity) { // 容量扩增
             bytesToCopy = oldCapacity;
-        } else {
+        } else { // 容量缩减
             trimIndicesToCapacity(newCapacity);
             bytesToCopy = newCapacity;
         }
@@ -644,7 +644,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
         this.buffer = null;
 
-        if (!doNotFree) {
+        if (!doNotFree) {  // 前述分析可知，doNotFree构造方法之后一直为false
             freeDirect(buffer);
         }
     }

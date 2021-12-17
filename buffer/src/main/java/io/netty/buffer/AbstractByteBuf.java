@@ -68,11 +68,11 @@ public abstract class AbstractByteBuf extends ByteBuf {
     static final ResourceLeakDetector<ByteBuf> leakDetector =
             ResourceLeakDetectorFactory.instance().newResourceLeakDetector(ByteBuf.class);
 
-    int readerIndex;
-    int writerIndex;
-    private int markedReaderIndex;
-    private int markedWriterIndex;
-    private int maxCapacity;
+    int readerIndex; // 读索引
+    int writerIndex; // 写索引
+    private int markedReaderIndex; // 标记读索引
+    private int markedWriterIndex; // 标记写索引
+    private int maxCapacity; // 最大容量
 
     protected AbstractByteBuf(int maxCapacity) {
         checkPositiveOrZero(maxCapacity, "maxCapacity");
@@ -220,12 +220,12 @@ public abstract class AbstractByteBuf extends ByteBuf {
         }
 
         if (readerIndex != writerIndex) {
-            setBytes(0, this, readerIndex, writerIndex - readerIndex);
-            writerIndex -= readerIndex;
-            adjustMarkers(readerIndex);
-            readerIndex = 0;
+            setBytes(0, this, readerIndex, writerIndex - readerIndex); // 将readerIndex之后的数据移动到从0开始
+            writerIndex -= readerIndex; // 写索引减少readerIndex
+            adjustMarkers(readerIndex); // 标记索引对应调整
+            readerIndex = 0; // 读索引置0
         } else {
-            ensureAccessible();
+            ensureAccessible(); // 读写索引相同时等同于clear操作
             adjustMarkers(readerIndex);
             writerIndex = readerIndex = 0;
         }
@@ -242,7 +242,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
                 return this;
             }
 
-            if (readerIndex >= capacity() >>> 1) {
+            if (readerIndex >= capacity() >>> 1) { // 核心逻辑
                 setBytes(0, this, readerIndex, writerIndex - readerIndex);
                 writerIndex -= readerIndex;
                 adjustMarkers(readerIndex);
@@ -270,7 +270,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     // Called after a capacity reduction
     protected final void trimIndicesToCapacity(int newCapacity) {
-        if (writerIndex() > newCapacity) {
+        if (writerIndex() > newCapacity) { // 调整读写索引位置
             setIndex0(Math.min(readerIndex(), newCapacity), newCapacity);
         }
     }

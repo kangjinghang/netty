@@ -21,14 +21,14 @@ import static io.netty.buffer.PoolChunk.SIZE_SHIFT;
 import static io.netty.buffer.PoolChunk.IS_USED_SHIFT;
 import static io.netty.buffer.PoolChunk.IS_SUBPAGE_SHIFT;
 import static io.netty.buffer.SizeClasses.LOG2_QUANTUM;
-
-final class PoolSubpage<T> implements PoolSubpageMetric {
+// PoolSubpage负责管理Small内存块。一个PoolSubpage中的内存块size都相同，该size对应SizeClasses#sizeClasses表格的一个索引index。
+final class PoolSubpage<T> implements PoolSubpageMetric { // PoolSubpage实际上就是PoolChunk中的一个Normal内存块，大小为其管理的内存块size与pageSize最小公倍数。
 
     final PoolChunk<T> chunk;
     private final int pageShifts;
     private final int runOffset;
     private final int runSize;
-    private final long[] bitmap;
+    private final long[] bitmap; // 每个long元素上每个bit位都可以代表一个内存块是否使用。
 
     PoolSubpage<T> prev;
     PoolSubpage<T> next;

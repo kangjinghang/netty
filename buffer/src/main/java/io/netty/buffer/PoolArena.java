@@ -41,7 +41,7 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
 
     final int numSmallSubpagePools;
     final int directMemoryCacheAlignment;
-    private final PoolSubpage<T>[] smallSubpagePools;
+    private final PoolSubpage<T>[] smallSubpagePools; // 数组中每个元素都是一个PoolSubpage链表，PoolSubpage之间可以通过next，prev组成链表。
 
     private final PoolChunkList<T> q050;
     private final PoolChunkList<T> q025;
@@ -128,13 +128,13 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     }
 
     private void allocate(PoolThreadCache cache, PooledByteBuf<T> buf, final int reqCapacity) {
-        final int sizeIdx = size2SizeIdx(reqCapacity); // 对请求的大小进行校准
+        final int sizeIdx = size2SizeIdx(reqCapacity); // 父类SizeClasses提供的方法，使用特定算法，将申请的内存大小调整为规范大小，划分到对应位置，返回对应索引
 
-        if (sizeIdx <= smallMaxSizeIdx) { // capacity < pageSize 判断校准之后的请求大小 是否小于 8k
+        if (sizeIdx <= smallMaxSizeIdx) { // capacity < pageSize 判断校准之后的请求大小 是否小于 8k，分配small级别的内存块
             tcacheAllocateSmall(cache, buf, reqCapacity, sizeIdx);
-        } else if (sizeIdx < nSizes) {
+        } else if (sizeIdx < nSizes) { // 分配normal级别的内存块
             tcacheAllocateNormal(cache, buf, reqCapacity, sizeIdx);
-        } else {
+        } else { // 分配huge级别的内存块
             int normCapacity = directMemoryCacheAlignment > 0
                     ? normalizeSize(reqCapacity) : reqCapacity;
             // Huge allocations are never served via the cache so just call allocateHuge
@@ -144,7 +144,7 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
 
     private void tcacheAllocateSmall(PoolThreadCache cache, PooledByteBuf<T> buf, final int reqCapacity,
                                      final int sizeIdx) {
-
+        // 1.首先尝试在线程缓存上分配。除了PoolArena，PoolThreadCache#smallSubPageHeapCaches还为每个线程维护了Small级别的内存缓存
         if (cache.allocateSmall(this, buf, reqCapacity, sizeIdx)) {
             // was able to allocate out of the cache so move on
             return;
@@ -154,12 +154,12 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
          * Synchronize on the head. This is needed as {@link PoolChunk#allocateSubpage(int)} and
          * {@link PoolChunk#free(long)} may modify the doubly linked list as well.
          */
-        final PoolSubpage<T> head = smallSubpagePools[sizeIdx];
+        final PoolSubpage<T> head = smallSubpagePools[sizeIdx]; // 2.使用前面SizeClasses#size2SizeIdx方法计算的索引，获取对应PoolSubpage
         final boolean needsNormalAllocation;
-        synchronized (head) {
+        synchronized (head) { // 注意，head是一个占位节点，并不存储数据。这里必要运行在同步机制中。
             final PoolSubpage<T> s = head.next;
-            needsNormalAllocation = s == head;
-            if (!needsNormalAllocation) {
+            needsNormalAllocation = s == head; // s==head表示当前不存在可以用的PoolSubpage，因为已经耗尽的PoolSubpage是会从链表中移除。
+            if (!needsNormalAllocation) { // 直接从PoolSubpage中分配内存
                 assert s.doNotDestroy && s.elemSize == sizeIdx2size(sizeIdx);
                 long handle = s.allocate();
                 assert handle >= 0;
@@ -167,7 +167,7 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
             }
         }
 
-        if (needsNormalAllocation) {
+        if (needsNormalAllocation) { // 没有可用的PoolSubpage，需要申请一个Normal级别的内存块，再在上面分配所需内存
             synchronized (this) {
                 allocateNormal(buf, reqCapacity, sizeIdx, cache);
             }
@@ -190,7 +190,7 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
 
     // Method must be called inside synchronized(this) { ... } block
     private void allocateNormal(PooledByteBuf<T> buf, int reqCapacity, int sizeIdx, PoolThreadCache threadCache) {
-        if (q050.allocate(buf, reqCapacity, sizeIdx, threadCache) ||
+        if (q050.allocate(buf, reqCapacity, sizeIdx, threadCache) || // 依次从q050，q025，q000，qInit，q075上申请内存
             q025.allocate(buf, reqCapacity, sizeIdx, threadCache) ||
             q000.allocate(buf, reqCapacity, sizeIdx, threadCache) ||
             qInit.allocate(buf, reqCapacity, sizeIdx, threadCache) ||
@@ -217,12 +217,12 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     }
 
     void free(PoolChunk<T> chunk, ByteBuffer nioBuffer, long handle, int normCapacity, PoolThreadCache cache) {
-        if (chunk.unpooled) {
+        if (chunk.unpooled) { // 如果是非池化内存，直接销毁内存
             int size = chunk.chunkSize();
             destroyChunk(chunk);
             activeBytesHuge.add(-size);
             deallocationsHuge.increment();
-        } else {
+        } else { // 如果是池化内存，首先尝试加到线程缓存中，成功则不需要其他操作。失败则调用freeChunk
             SizeClass sizeClass = sizeClass(handle);
             if (cache != null && cache.add(this, chunk, nioBuffer, handle, normCapacity, sizeClass)) {
                 // cached so not free it.

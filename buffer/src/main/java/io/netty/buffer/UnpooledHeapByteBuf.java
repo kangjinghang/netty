@@ -37,9 +37,9 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  */
 public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
 
-    private final ByteBufAllocator alloc;
-    byte[] array;
-    private ByteBuffer tmpNioBuf;
+    private final ByteBufAllocator alloc; // 分配器
+    byte[] array; // 底层字节数组
+    private ByteBuffer tmpNioBuf; // NIO的ByteBuffer形式
 
     /**
      * Creates a new heap buffer with a newly allocated byte array.
@@ -84,7 +84,7 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
     protected byte[] allocateArray(int initialCapacity) {
         return new byte[initialCapacity];
     }
-
+    // 由于堆内的字节数组会被GC自动回收，所以不需要具体实现代码
     protected void freeArray(byte[] array) {
         // NOOP
     }
@@ -98,12 +98,12 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
     public ByteBufAllocator alloc() {
         return alloc;
     }
-
+    // 默认的字节序：大端模式
     @Override
     public ByteOrder order() {
         return ByteOrder.BIG_ENDIAN;
     }
-
+    // 是否直接数组
     @Override
     public boolean isDirect() {
         return false;
@@ -119,24 +119,24 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         checkNewCapacity(newCapacity);
         byte[] oldArray = array;
         int oldCapacity = oldArray.length;
-        if (newCapacity == oldCapacity) {
+        if (newCapacity == oldCapacity) { // 容量相等时不做处理
             return this;
         }
 
         int bytesToCopy;
-        if (newCapacity > oldCapacity) {
+        if (newCapacity > oldCapacity) {  // 容量扩增
             bytesToCopy = oldCapacity;
         } else {
-            trimIndicesToCapacity(newCapacity);
+            trimIndicesToCapacity(newCapacity); // 容量缩减
             bytesToCopy = newCapacity;
         }
-        byte[] newArray = allocateArray(newCapacity);
-        System.arraycopy(oldArray, 0, newArray, 0, bytesToCopy);
+        byte[] newArray = allocateArray(newCapacity); // 申请数组
+        System.arraycopy(oldArray, 0, newArray, 0, bytesToCopy); // 将老数组的字节复制到新数组
         setArray(newArray);
         freeArray(oldArray);
         return this;
     }
-
+    // 底层是否有Java堆字节数组
     @Override
     public boolean hasArray() {
         return true;
@@ -147,12 +147,12 @@ public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
         ensureAccessible();
         return array;
     }
-
+    // 底层数组的偏移量
     @Override
     public int arrayOffset() {
         return 0;
     }
-
+    // 是否含有os底层的数组起始地址
     @Override
     public boolean hasMemoryAddress() {
         return false;
