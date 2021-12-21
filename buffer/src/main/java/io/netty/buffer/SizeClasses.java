@@ -96,23 +96,23 @@ abstract class SizeClasses implements SizeClassesMetric {
     private static final byte no = 0, yes = 1;
 
     protected SizeClasses(int pageSize, int pageShifts, int chunkSize, int directMemoryCacheAlignment) {
-        this.pageSize = pageSize; // 这个是8192
-        this.pageShifts = pageShifts; // 用于辅助计算的 13  ===> 2 ^ 13 = 8192
+        this.pageSize = pageSize; // 这个是8192，8KB
+        this.pageShifts = pageShifts; // 用于辅助计算的（pageSize的最高位需要左移的次数） 13  ===> 2 ^ 13 = 8192
         this.chunkSize = chunkSize; // 16M  chunk 大小
-        this.directMemoryCacheAlignment = directMemoryCacheAlignment; // 对齐基准
-
+        this.directMemoryCacheAlignment = directMemoryCacheAlignment; // 对齐基准，主要是对于Huge这种直接分配的类型的数据将其对其为directMemoryCacheAlignment的倍数
+        // 计算出group的数量，24 + 1 - 4 = 19个group
         int group = log2(chunkSize) + 1 - LOG2_QUANTUM;
 
-        //generate size classes
+        //generate size classes，生成sizeClasses,对于这个数组的7个位置的每一位表示的含义为
         //[index, log2Group, log2Delta, nDelta, isMultiPageSize, isSubPage, log2DeltaLookup]
         sizeClasses = new short[group << LOG2_SIZE_CLASS_GROUP][7];
         nSizes = sizeClasses();
-
+        // 生成idx对size的表格,这里的sizeIdx2sizeTab存储的就是利用(1 << log2Group) + (nDelta << log2Delta)计算的size
         //generate lookup table
         sizeIdx2sizeTab = new int[nSizes];
-        pageIdx2sizeTab = new int[nPSizes];
+        pageIdx2sizeTab = new int[nPSizes]; //pageIdx2sizeTab则存储的是isMultiPageSize是1的对应的size
         idx2SizeTab(sizeIdx2sizeTab, pageIdx2sizeTab);
-
+        // 生成size对idx的表格，这里存储的是lookupMaxSize以下的，并且其size的单位是1<<LOG2_QUANTUM
         size2idxTab = new int[lookupMaxSize >> LOG2_QUANTUM];
         size2idxTab(size2idxTab);
     }
@@ -149,7 +149,7 @@ abstract class SizeClasses implements SizeClassesMetric {
 
         int log2Group = LOG2_QUANTUM; // log2Group = LOG2_QUANTUM = 4
         int log2Delta = LOG2_QUANTUM; // log2Delta = LOG2_QUANTUM = 4
-        int ndeltaLimit = 1 << LOG2_SIZE_CLASS_GROUP; // ndeltaLimit = 1 << 2 = 4，内存块size以4个为一组进行分组
+        int ndeltaLimit = 1 << LOG2_SIZE_CLASS_GROUP; // ndeltaLimit = 1 << 2 = 4，表示的是每一组的数量，内存块size以4个为一组进行分组
 
         //First small group, nDelta start at 0.
         //first size class is 1 << LOG2_QUANTUM
@@ -157,12 +157,12 @@ abstract class SizeClasses implements SizeClassesMetric {
         while (nDelta < ndeltaLimit) { // nDelta从0开始
             size = sizeClass(index++, log2Group, log2Delta, nDelta++); // sizeClass方法计算sizeClasses每一行内容
         }
-        log2Group += LOG2_SIZE_CLASS_GROUP; // 第0组后log2Group增加LOG2_SIZE_CLASS_GROUP = 6，而log2Delta = 4 不变
+        log2Group += LOG2_SIZE_CLASS_GROUP; // 从第1组开始，log2Group增加LOG2_SIZE_CLASS_GROUP，即log2Group = 6，而log2Delta = 4 不变
         // 所以 log2Group += LOG2_SIZE_CLASS_GROUP，等价于 log2Group = log2Delta + LOG2_SIZE_CLASS_GROUP
         //All remaining groups, nDelta start at 1.
         while (size < chunkSize) { // 初始化后面的size
             nDelta = 1; // nDelta从1开始
-
+            // 生成一组内存块，nDeleta从1到1 << LOG2_SIZE_CLASS_GROUP，即1到4的内存块
             while (nDelta <= ndeltaLimit && size < chunkSize) {
                 size = sizeClass(index++, log2Group, log2Delta, nDelta++);
                 normalMaxSize = size;
@@ -173,7 +173,7 @@ abstract class SizeClasses implements SizeClassesMetric {
         }
 
         //chunkSize must be normalMaxSize
-        assert chunkSize == normalMaxSize;
+        assert chunkSize == normalMaxSize; // 进行了断言,表示chunkSize必须是sizeClass的最后一个
 
         //return number of size index
         return index;
@@ -182,7 +182,7 @@ abstract class SizeClasses implements SizeClassesMetric {
     //calculate size class
     private int sizeClass(int index, int log2Group, int log2Delta, int nDelta) {
         short isMultiPageSize;
-        if (log2Delta >= pageShifts) {
+        if (log2Delta >= pageShifts) { // log2Delta大于pageShifts则表示size的计算的最小单位都大于pageSize
             isMultiPageSize = yes;
         } else {
             int pageSize = 1 << pageShifts;
@@ -195,7 +195,7 @@ abstract class SizeClasses implements SizeClassesMetric {
         int log2Ndelta = nDelta == 0? 0 : log2(nDelta);
 
         byte remove = 1 << log2Ndelta < nDelta? yes : no;
-
+        // 2^(log2Delta+log2Ndelta)即为(1 << log2Delta) * nDelta,故log2Delta + log2Ndelta == log2Group是size=2^(log2Group + 1)
         int log2Size = log2Delta + log2Ndelta == log2Group? log2Group + 1 : log2Group;
         if (log2Size == log2Group) {
             remove = yes;
@@ -214,15 +214,15 @@ abstract class SizeClasses implements SizeClassesMetric {
 
         sizeClasses[index] = sz;
         int size = (1 << log2Group) + (nDelta << log2Delta);
-
+        // 计算是pageSize的数量
         if (sz[PAGESIZE_IDX] == yes) {
             nPSizes++;
         }
-        if (sz[SUBPAGE_IDX] == yes) {
+        if (sz[SUBPAGE_IDX] == yes) { // 计算是subPage的数量
             nSubpages++;
-            smallMaxSizeIdx = index;
+            smallMaxSizeIdx = index; // 这个值是用来判断分配是从subpage分配还是直接从poolchunk中进行分配
         }
-        if (sz[LOG2_DELTA_LOOKUP_IDX] != no) {
+        if (sz[LOG2_DELTA_LOOKUP_IDX] != no) { // 计算lookupMaxSize
             lookupMaxSize = size;
         }
         return size;
@@ -253,7 +253,7 @@ abstract class SizeClasses implements SizeClassesMetric {
         for (int i = 0; size <= lookupMaxSize; i++) {
             int log2Delta = sizeClasses[i][LOG2DELTA_IDX];
             int times = 1 << log2Delta - LOG2_QUANTUM;
-
+            // 以2B为单位,每隔2B生成一个size->idx的对应关系
             while (size <= lookupMaxSize && times-- > 0) {
                 size2idxTab[idx++] = i;
                 size = idx + 1 << LOG2_QUANTUM;

@@ -18,14 +18,14 @@ package io.netty.buffer;
 
 import io.netty.util.internal.StringUtil;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
-import static java.lang.Math.*;
-
-import java.nio.ByteBuffer;
+import static java.lang.Math.max;
+import static java.lang.Math.min;
 
 final class PoolChunkList<T> implements PoolChunkListMetric {
     private static final Iterator<PoolChunkMetric> EMPTY_METRICS = Collections.<PoolChunkMetric>emptyList().iterator();
@@ -98,16 +98,16 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
 
     boolean allocate(PooledByteBuf<T> buf, int reqCapacity, int sizeIdx, PoolThreadCache threadCache) {
         int normCapacity = arena.sizeIdx2size(sizeIdx);
-        if (normCapacity > maxCapacity) {
+        if (normCapacity > maxCapacity) { // 这里的请求的内存比当前的PoolChunkList的最大的容量，即100%减去当前类型的最小容量
             // Either this PoolChunkList is empty or the requested capacity is larger then the capacity which can
             // be handled by the PoolChunks that are contained in this PoolChunkList.
             return false;
         }
-
+        // 遍历这个链表的所有PoolChunk进行分配
         for (PoolChunk<T> cur = head; cur != null; cur = cur.next) {
-            if (cur.allocate(buf, reqCapacity, sizeIdx, threadCache)) {
-                if (cur.freeBytes <= freeMinThreshold) {
-                    remove(cur);
+            if (cur.allocate(buf, reqCapacity, sizeIdx, threadCache)) { // 单个PoolChunk成功
+                if (cur.freeBytes <= freeMinThreshold) { // 这里直接获取freeBytes数据,而不是调用useage方法那样对arena进行synchonized操作，因为此处的操作必然有了arena锁对象
+                    remove(cur); // 这里如果当前剩下的空闲的byte小于这个类型的最小的下限，则需要将其向上移动到下一个PoolChunkList中
                     nextList.add(cur);
                 }
                 return true;
@@ -121,7 +121,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
         if (chunk.freeBytes > freeMaxThreshold) {
             remove(chunk);
             // Move the PoolChunk down the PoolChunkList linked-list.
-            return move0(chunk);
+            return move0(chunk); // 这里调用的不是preList的add操作,而是move0的操作
         }
         return true;
     }
@@ -131,7 +131,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
 
         if (chunk.freeBytes > freeMaxThreshold) {
             // Move the PoolChunk down the PoolChunkList linked-list.
-            return move0(chunk);
+            return move0(chunk); // 当前节点的空闲byte大于上限，则向前移动
         }
 
         // PoolChunk fits into this PoolChunkList, adding it here.
@@ -144,7 +144,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
      * {@link PoolChunkList} that has the correct minUsage / maxUsage in respect to {@link PoolChunk#usage()}.
      */
     private boolean move0(PoolChunk<T> chunk) {
-        if (prevList == null) {
+        if (prevList == null) { // 这里没有上一个节点，即为Q0对应的list，并且返回的是false表示的是当前。PoolChunk会被回收
             // There is no previous PoolChunkList so return false which result in having the PoolChunk destroyed and
             // all memory associated with the PoolChunk will be released.
             assert chunk.usage() == 0;
@@ -154,7 +154,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
     }
 
     void add(PoolChunk<T> chunk) {
-        if (chunk.freeBytes <= freeMinThreshold) {
+        if (chunk.freeBytes <= freeMinThreshold) { // 在空闲的bytes小于当前下限时则直接移动到后面一个节点
             nextList.add(chunk);
             return;
         }
@@ -166,7 +166,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
      */
     void add0(PoolChunk<T> chunk) {
         chunk.parent = this;
-        if (head == null) {
+        if (head == null) { // 可以看到每次add都是加在下一个链表的头部，头插法
             head = chunk;
             chunk.prev = null;
             chunk.next = null;
@@ -177,7 +177,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
             head = chunk;
         }
     }
-
+    // 从双链表中移除这个节点
     private void remove(PoolChunk<T> cur) {
         if (cur == head) {
             head = cur.next;
