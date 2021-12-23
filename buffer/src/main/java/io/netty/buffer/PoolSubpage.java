@@ -26,7 +26,7 @@ final class PoolSubpage<T> implements PoolSubpageMetric { // PoolSubpage实际�
 
     final PoolChunk<T> chunk; // 所属的chunk
     private final int pageShifts; // page需要移动的位数
-    private final int runOffset; // 在poolChunk所处的位置
+    private final int runOffset; // 在poolChunk所处的位置，即在整个Chunk的偏移字节数
     private final int runSize;
     private final long[] bitmap; // 每个long元素上每个bit位都可以代表一个内存块是否使用。
 
@@ -34,9 +34,9 @@ final class PoolSubpage<T> implements PoolSubpageMetric { // PoolSubpage实际�
     PoolSubpage<T> next; // 链表的后一个节点
 
     boolean doNotDestroy; // 标识这个PoolSubpage从pool移除，已经被释放了
-    int elemSize; // 一块内存的大小
-    private int maxNumElems; // 最大的内存数量
-    private int bitmapLength; // 这个bitmap的长度
+    int elemSize; // 均等切分的一块内存的大小
+    private int maxNumElems; // 最多可以切分的小块数
+    private int bitmapLength; // 位图bitmap的长度，long元素的个数（每个long元素上每个bit位都可以代表一个内存块是否使用）
     private int nextAvail; // 下一个可用的内存块坐标缓存
     private int numAvail; // 可用的内存块的数量
 
@@ -57,17 +57,17 @@ final class PoolSubpage<T> implements PoolSubpageMetric { // PoolSubpage实际�
         this.chunk = chunk;
         this.pageShifts = pageShifts;
         this.runOffset = runOffset;
-        this.runSize = runSize;
+        this.runSize = runSize; // runSize 约等于 pageSize
         this.elemSize = elemSize;
-        bitmap = new long[runSize >>> 6 + LOG2_QUANTUM]; //  bitmap长度为runSize / 64 / QUANTUM，从《内存对齐类SizeClasses》可以看到，runSize都是2^LOG2_QUANTUM的倍数。
+        bitmap = new long[runSize >>> 6 + LOG2_QUANTUM]; //  bitmap长度为runSize / 64 / QUANTUM，此处使用最大值，最小分配16B所需的long个数，从《内存对齐类SizeClasses》可以看到，runSize都是2^LOG2_QUANTUM的倍数。
 
         doNotDestroy = true;
         if (elemSize != 0) {
-            maxNumElems = numAvail = runSize / elemSize; // elemSize：每个内存块的大小，maxNumElems：内存块数量
+            maxNumElems = numAvail = runSize / elemSize; // elemSize：每个subPage的大小，maxNumElems：subPage数量
             nextAvail = 0;
-            bitmapLength = maxNumElems >>> 6; // bitmapLength：bitmap使用的long元素个数，使用bitmap中一部分元素足以管理全部内存块。
+            bitmapLength = maxNumElems >>> 6; // maxNumElems/64(1个long型整数是64位)，bitmapLength：bitmap使用的long元素个数，使用bitmap中一部分元素足以管理全部内存块。
             if ((maxNumElems & 63) != 0) { // (maxNumElems & 63) != 0，代表maxNumElems不能整除64，所以bitmapLength要加1，用于管理余下的内存块。
-                bitmapLength ++;
+                bitmapLength ++; // subpage的总数不是64倍，多需要一个long
             }
 
             for (int i = 0; i < bitmapLength; i ++) {

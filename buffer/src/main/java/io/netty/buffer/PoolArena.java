@@ -37,12 +37,12 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
         Normal
     }
 
-    final PooledByteBufAllocator parent;
+    final PooledByteBufAllocator parent; // 分配这个poolArena对应的allocator
 
-    final int numSmallSubpagePools;
+    final int numSmallSubpagePools; // small级别的的双向链表头个数
     final int directMemoryCacheAlignment;
-    private final PoolSubpage<T>[] smallSubpagePools; // 数组中每个元素都是一个PoolSubpage链表，PoolSubpage之间可以通过next，prev组成链表。
-
+    private final PoolSubpage<T>[] smallSubpagePools; // 数组中每个元素都是一个PoolSubpage链表，PoolSubpage之间可以通过next，prev组成链表。维护的是PoolArena内的所有的PoolChunk内下的所有的PoolSubpage
+    // 存储了所有类型的PoolChunkList
     private final PoolChunkList<T> q050;
     private final PoolChunkList<T> q025;
     private final PoolChunkList<T> q000;
@@ -66,7 +66,7 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     private final LongCounter deallocationsHuge = PlatformDependent.newLongCounter();
 
     // Number of thread caches backed by this arena.
-    final AtomicInteger numThreadCaches = new AtomicInteger();
+    final AtomicInteger numThreadCaches = new AtomicInteger(); // 存储分配给这个PoolArena的对应得到线程的数量
 
     // TODO: Test if adding padding helps under contention
     //private long pad0, pad1, pad2, pad3, pad4, pad5, pad6, pad7;
@@ -130,18 +130,18 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     private void allocate(PoolThreadCache cache, PooledByteBuf<T> buf, final int reqCapacity) {
         final int sizeIdx = size2SizeIdx(reqCapacity); // 父类SizeClasses提供的方法，使用特定算法，将申请的内存大小调整为规范大小，划分到对应位置，返回对应索引
 
-        if (sizeIdx <= smallMaxSizeIdx) { // capacity < pageSize 判断校准之后的请求大小 是否小于 8k，分配small级别的内存块
-            tcacheAllocateSmall(cache, buf, reqCapacity, sizeIdx);
+        if (sizeIdx <= smallMaxSizeIdx) { // capacity < pageSize 判断校准之后的请求大小 是否小于 28k，分配small级别的内存块
+            tcacheAllocateSmall(cache, buf, reqCapacity, sizeIdx); // 在PoolSubpage进行分配
         } else if (sizeIdx < nSizes) { // 分配normal级别的内存块
-            tcacheAllocateNormal(cache, buf, reqCapacity, sizeIdx);
-        } else { // 分配huge级别的内存块
-            int normCapacity = directMemoryCacheAlignment > 0
+            tcacheAllocateNormal(cache, buf, reqCapacity, sizeIdx); // 在PoolChunk中进行分配
+        } else { // 分配huge级别的内存块。如果大于sizeClasses中最大的能分配的大小，则不在池中分配，直接堆或者直接内存中分配
+            int normCapacity = directMemoryCacheAlignment > 0 // directMemoryCacheAlignment表示的是是否需要内存对齐，对于small和normal类型的内存对齐则是在父类的size2SizeIdx方法完成的
                     ? normalizeSize(reqCapacity) : reqCapacity;
             // Huge allocations are never served via the cache so just call allocateHuge
             allocateHuge(buf, normCapacity);
         }
     }
-
+    // 先从PoolSubpage池中找到对应的size的PoolSubpage来进行所需内存的分配，如果没有的话会从PoolChunk分配出对应的PoolSubpage，以进行内存分配。
     private void tcacheAllocateSmall(PoolThreadCache cache, PooledByteBuf<T> buf, final int reqCapacity,
                                      final int sizeIdx) {
         // 1.首先尝试在线程缓存上分配。除了PoolArena，PoolThreadCache#smallSubPageHeapCaches还为每个线程维护了Small级别的内存缓存
@@ -156,8 +156,8 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
          */
         final PoolSubpage<T> head = smallSubpagePools[sizeIdx]; // 2.使用前面SizeClasses#size2SizeIdx方法计算的索引，获取对应PoolSubpage
         final boolean needsNormalAllocation;
-        synchronized (head) { // 注意，head是一个占位节点，并不存储数据。这里必要运行在同步机制中。
-            final PoolSubpage<T> s = head.next;
+        synchronized (head) { // 注意，head是一个占位节点，并不存储数据。这里必要运行在同步机制中，即会锁定整个链表。
+            final PoolSubpage<T> s = head.next; // 这里没有进行遍历，因为对应的链表下的所有的PoolSubpage必然没有满并且分配的单块内存都是这个sizeIdx对应的size
             needsNormalAllocation = s == head; // s==head表示当前不存在可以用的PoolSubpage，因为已经耗尽的PoolSubpage是会从链表中移除。
             if (!needsNormalAllocation) { // 直接从PoolSubpage中分配内存
                 assert s.doNotDestroy && s.elemSize == sizeIdx2size(sizeIdx);
@@ -178,11 +178,11 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
 
     private void tcacheAllocateNormal(PoolThreadCache cache, PooledByteBuf<T> buf, final int reqCapacity,
                                       final int sizeIdx) {
-        if (cache.allocateNormal(this, buf, reqCapacity, sizeIdx)) {
+        if (cache.allocateNormal(this, buf, reqCapacity, sizeIdx)) { // 从PoolThreadCache中进行分配
             // was able to allocate out of the cache so move on
             return;
         }
-        synchronized (this) {
+        synchronized (this) { // 对于allocateNormal的调用一定需要对PoolArena对象加锁
             allocateNormal(buf, reqCapacity, sizeIdx, cache);
             ++allocationsNormal;
         }
@@ -192,8 +192,8 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     private void allocateNormal(PooledByteBuf<T> buf, int reqCapacity, int sizeIdx, PoolThreadCache threadCache) {
         if (q050.allocate(buf, reqCapacity, sizeIdx, threadCache) || // 依次从q050，q025，q000，qInit，q075上申请内存
             q025.allocate(buf, reqCapacity, sizeIdx, threadCache) ||
-            q000.allocate(buf, reqCapacity, sizeIdx, threadCache) ||
-            qInit.allocate(buf, reqCapacity, sizeIdx, threadCache) ||
+            q000.allocate(buf, reqCapacity, sizeIdx, threadCache) || // 在qInit中不能分配的内存在q075中是有可能进行分配，因为qInit中的内存使用率虽然是0%~25%，而q075的使用率是75%~100%
+            qInit.allocate(buf, reqCapacity, sizeIdx, threadCache) || // 但是qInit中可能没有一块连续的很大的内存，而q075中可能有
             q075.allocate(buf, reqCapacity, sizeIdx, threadCache)) {
             return;
         }
@@ -202,7 +202,7 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
         PoolChunk<T> c = newChunk(pageSize, nPSizes, pageShifts, chunkSize);
         boolean success = c.allocate(buf, reqCapacity, sizeIdx, threadCache);
         assert success;
-        qInit.add(c);
+        qInit.add(c); // 首先加入到qInit中
     }
 
     private void incSmallAllocation() {
@@ -217,14 +217,14 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     }
 
     void free(PoolChunk<T> chunk, ByteBuffer nioBuffer, long handle, int normCapacity, PoolThreadCache cache) {
-        if (chunk.unpooled) { // 如果是非池化内存，直接销毁内存
+        if (chunk.unpooled) { // 如果是非池化的huge类型的内存，直接销毁内存
             int size = chunk.chunkSize();
             destroyChunk(chunk);
             activeBytesHuge.add(-size);
             deallocationsHuge.increment();
         } else { // 如果是池化内存，首先尝试加到线程缓存中，成功则不需要其他操作。失败则调用freeChunk
             SizeClass sizeClass = sizeClass(handle);
-            if (cache != null && cache.add(this, chunk, nioBuffer, handle, normCapacity, sizeClass)) {
+            if (cache != null && cache.add(this, chunk, nioBuffer, handle, normCapacity, sizeClass)) { // PoolThreadCache内存进行分配
                 // cached so not free it.
                 return;
             }
@@ -255,7 +255,7 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
                         throw new Error();
                 }
             }
-            destroyChunk = !chunk.parent.free(chunk, handle, normCapacity, nioBuffer);
+            destroyChunk = !chunk.parent.free(chunk, handle, normCapacity, nioBuffer); // 在PoolChunkList中进行释放,并调整其对应的数据结构
         }
         if (destroyChunk) {
             // destroyChunk not need to be called while holding the synchronized lock.
@@ -283,15 +283,15 @@ abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
         int oldMaxLength = buf.maxLength;
 
         // This does not touch buf's reader/writer indices
-        allocate(parent.threadCache(), buf, newCapacity);
+        allocate(parent.threadCache(), buf, newCapacity); // 重新分配一个newCapacity大小的内存，这里会重新分配一个ByteBuffer
         int bytesToCopy;
         if (newCapacity > oldCapacity) {
             bytesToCopy = oldCapacity;
         } else {
-            buf.trimIndicesToCapacity(newCapacity);
+            buf.trimIndicesToCapacity(newCapacity); // 如果新的分配的内存比原来的小,则将对应的ByteBuf的readIdx和writeIdx截断到最后一个位置
             bytesToCopy = newCapacity;
         }
-        memoryCopy(oldMemory, oldOffset, buf, bytesToCopy);
+        memoryCopy(oldMemory, oldOffset, buf, bytesToCopy); // 将原先内存的数据copy到新分配的内存中
         if (freeOldMemory) {
             free(oldChunk, oldNioBuffer, oldHandle, oldMaxLength, buf.cache);
         }

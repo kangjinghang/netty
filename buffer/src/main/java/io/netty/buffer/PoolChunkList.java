@@ -29,17 +29,17 @@ import static java.lang.Math.min;
 
 final class PoolChunkList<T> implements PoolChunkListMetric {
     private static final Iterator<PoolChunkMetric> EMPTY_METRICS = Collections.<PoolChunkMetric>emptyList().iterator();
-    private final PoolArena<T> arena;
-    private final PoolChunkList<T> nextList;
-    private final int minUsage;
-    private final int maxUsage;
-    private final int maxCapacity;
-    private PoolChunk<T> head;
+    private final PoolArena<T> arena; // 所属的Arena
+    private final PoolChunkList<T> nextList; // 下一个PoolChunkList
+    private final int minUsage; // PoolChunkList的最小内存使用率
+    private final int maxUsage; // PoolChunkList的最大内存使用率
+    private final int maxCapacity;  // 该PoolChunkList下的一个Chunk可分配的最大字节数
+    private PoolChunk<T> head; // head节点
     private final int freeMinThreshold;
     private final int freeMaxThreshold;
 
     // This is only update once when create the linked like list of PoolChunkList in PoolArena constructor.
-    private PoolChunkList<T> prevList;
+    private PoolChunkList<T> prevList; // 上一个PoolChunkList
 
     // TODO: Test if adding padding helps under contention
     //private long pad0, pad1, pad2, pad3, pad4, pad5, pad6, pad7;
@@ -50,7 +50,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
         this.nextList = nextList;
         this.minUsage = minUsage;
         this.maxUsage = maxUsage;
-        maxCapacity = calculateMaxCapacity(minUsage, chunkSize);
+        maxCapacity = calculateMaxCapacity(minUsage, chunkSize); // 计算该PoolChunkList下，一个Chunk块可以分配的最大内存
 
         // the thresholds are aligned with PoolChunk.usage() logic:
         // 1) basic logic: usage() = 100 - freeBytes * 100L / chunkSize
@@ -80,7 +80,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
 
         if (minUsage == 100) {
             // If the minUsage is 100 we can not allocate anything out of this list.
-            return 0;
+            return 0; // Q100 不能再分配
         }
 
         // Calculate the maximum amount of bytes that can be allocated from a PoolChunk in this PoolChunkList.
@@ -88,11 +88,11 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
         // As an example:
         // - If a PoolChunkList has minUsage == 25 we are allowed to allocate at most 75% of the chunkSize because
         //   this is the maximum amount available in any PoolChunk in this PoolChunkList.
-        return  (int) (chunkSize * (100L - minUsage) / 100L);
+        return  (int) (chunkSize * (100L - minUsage) / 100L); // Q25中一个Chunk可以分配的最大内存为0.75 * ChunkSize
     }
 
     void prevList(PoolChunkList<T> prevList) {
-        assert this.prevList == null;
+        assert this.prevList == null; // 这个方法只应该在创建时调用一次
         this.prevList = prevList;
     }
 
@@ -131,7 +131,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
 
         if (chunk.freeBytes > freeMaxThreshold) {
             // Move the PoolChunk down the PoolChunkList linked-list.
-            return move0(chunk); // 当前节点的空闲byte大于上限，则向前移动
+            return move0(chunk); // 当前节点的空闲byte大于上限，则向前移动，递归调用
         }
 
         // PoolChunk fits into this PoolChunkList, adding it here.
@@ -150,7 +150,7 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
             assert chunk.usage() == 0;
             return false;
         }
-        return prevList.move(chunk);
+        return prevList.move(chunk); // 向左移动
     }
 
     void add(PoolChunk<T> chunk) {
@@ -248,9 +248,9 @@ final class PoolChunkList<T> implements PoolChunkListMetric {
     void destroy(PoolArena<T> arena) {
         PoolChunk<T> chunk = head;
         while (chunk != null) {
-            arena.destroyChunk(chunk);
+            arena.destroyChunk(chunk); // 释放Chunk
             chunk = chunk.next;
         }
-        head = null;
+        head = null; // GC回收节点
     }
 }

@@ -530,14 +530,14 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
         @Override
         protected void onRemoval(PoolThreadCache threadCache) {
-            threadCache.free(false);
+            threadCache.free(false); // 释放线程缓存中未分配的空间
         } // 释放的时候，为子类提供的空方法
 
-        private <T> PoolArena<T> leastUsedArena(PoolArena<T>[] arenas) {
+        private <T> PoolArena<T> leastUsedArena(PoolArena<T>[] arenas) { // 使得线程均等使用Arena
             if (arenas == null || arenas.length == 0) {
                 return null;
             }
-
+            // 寻找使用缓存最少的arena
             PoolArena<T> minArena = arenas[0];
             for (int i = 1; i < arenas.length; i++) {
                 PoolArena<T> arena = arenas[i];

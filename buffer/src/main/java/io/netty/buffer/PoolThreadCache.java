@@ -48,17 +48,17 @@ final class PoolThreadCache {
 
     final PoolArena<byte[]> heapArena;
     final PoolArena<ByteBuffer> directArena;
-
+    // 对不同类型的pageCaches
     // Hold the caches for the different size classes, which are tiny, small and normal.
     private final MemoryRegionCache<byte[]>[] smallSubPageHeapCaches;
     private final MemoryRegionCache<ByteBuffer>[] smallSubPageDirectCaches;
     private final MemoryRegionCache<byte[]>[] normalHeapCaches;
     private final MemoryRegionCache<ByteBuffer>[] normalDirectCaches;
 
-    private final int freeSweepAllocationThreshold;
-    private final AtomicBoolean freed = new AtomicBoolean();
+    private final int freeSweepAllocationThreshold; // 缓存命中多少次后进行trim操作，和allocations一起来确定trim的时机
+    private final AtomicBoolean freed = new AtomicBoolean(); // 缓存是否被释放标
 
-    private int allocations;
+    private int allocations;  // 缓存命中次数
 
     // TODO: Test if adding padding helps under contention
     //private long pad0, pad1, pad2, pad3, pad4, pad5, pad6, pad7;
@@ -111,7 +111,7 @@ final class PoolThreadCache {
             int cacheSize, int numCaches) {
         if (cacheSize > 0 && numCaches > 0) {
             @SuppressWarnings("unchecked")
-            MemoryRegionCache<T>[] cache = new MemoryRegionCache[numCaches]; // 创建 MemoryRegionCache 数组，Small/Normal 数组大小是 4/
+            MemoryRegionCache<T>[] cache = new MemoryRegionCache[numCaches]; // 创建 MemoryRegionCache 数组，Small/Normal 数组大小是 4/12
             for (int i = 0; i < cache.length; i++) {
                 // TODO: maybe use cacheSize / cache.length
                 cache[i] = new SubPageMemoryRegionCache<T>(cacheSize); // 初始化
@@ -333,14 +333,14 @@ final class PoolThreadCache {
     }
 
     private abstract static class MemoryRegionCache<T> {
-        private final int size;
-        private final Queue<Entry<T>> queue;
-        private final SizeClass sizeClass;
-        private int allocations;
+        private final int size; // 队列长度
+        private final Queue<Entry<T>> queue; // 队列
+        private final SizeClass sizeClass; // Small/Normal
+        private int allocations; // 分配次数
 
         MemoryRegionCache(int size, SizeClass sizeClass) {
             this.size = MathUtil.safeFindNextPositivePowerOfTwo(size);  // 对Size进行对齐,  Small = 256
-            queue = PlatformDependent.newFixedMpscQueue(this.size); // 创建队列，长度是Size
+            queue = PlatformDependent.newFixedMpscQueue(this.size); // 创建MPSC队列，即多个生产者单一消费者队列，长度是Size
             this.sizeClass = sizeClass;  // 记录类型
         }
 
@@ -357,7 +357,7 @@ final class PoolThreadCache {
         public final boolean add(PoolChunk<T> chunk, ByteBuffer nioBuffer, long handle, int normCapacity) {
             Entry<T> entry = newEntry(chunk, nioBuffer, handle, normCapacity); // 新建ENTRY
             boolean queued = queue.offer(entry); //  添加到队列中
-            if (!queued) { // 如果队列满了，直接回收，不缓存
+            if (!queued) { // 如果队列满了，直接回收entry对象进行下一次分配，不缓存
                 // If it was not possible to cache the chunk, immediately recycle the entry
                 entry.recycle();
             }
@@ -369,15 +369,15 @@ final class PoolThreadCache {
          * Allocate something out of the cache if possible and remove the entry from the cache.
          */
         public final boolean allocate(PooledByteBuf<T> buf, int reqCapacity, PoolThreadCache threadCache) {
-            Entry<T> entry = queue.poll();
+            Entry<T> entry = queue.poll(); // 从队列头部取出
             if (entry == null) {
                 return false;
             }
-            initBuf(entry.chunk, entry.nioBuffer, entry.handle, buf, reqCapacity, threadCache);
+            initBuf(entry.chunk, entry.nioBuffer, entry.handle, buf, reqCapacity, threadCache); // 在之前ByteBuf同样的内存位置分配一个新的 ByteBuf 对象
             entry.recycle();
 
             // allocations is not thread-safe which is fine as this is only called from the same thread all time.
-            ++ allocations;
+            ++ allocations; // 该值是内部量，和上一方法不同
             return true;
         }
 
@@ -396,7 +396,7 @@ final class PoolThreadCache {
                     freeEntry(entry, finalizer);
                 } else {
                     // all cleared
-                    return numFreed;
+                    return numFreed; // 队列中所有节点都被释放
                 }
             }
             return numFreed;
@@ -407,11 +407,11 @@ final class PoolThreadCache {
          */
         public final void trim() {
             int free = size - allocations;
-            allocations = 0;
+            allocations = 0; // allocations 表示已经重新分配出去的ByteBuf个数
 
             // We not even allocated all the number that are
-            if (free > 0) {
-                free(free, false);
+            if (free > 0) { // 在一定阈值内还没被分配出去的空间将被释放
+                free(free, false); // 释放队列中的节点
             }
         }
 
@@ -424,17 +424,17 @@ final class PoolThreadCache {
             if (!finalizer) {
                 // recycle now so PoolChunk can be GC'ed. This will only be done if this is not freed because of
                 // a finalizer.
-                entry.recycle();
+                entry.recycle();  // 回收entry对象
             }
 
-            chunk.arena.freeChunk(chunk, handle, entry.normCapacity, sizeClass, nioBuffer, finalizer);
+            chunk.arena.freeChunk(chunk, handle, entry.normCapacity, sizeClass, nioBuffer, finalizer); // 释放实际的内存空间
         }
 
         static final class Entry<T> {
-            final Handle<Entry<?>> recyclerHandle;
-            PoolChunk<T> chunk;
+            final Handle<Entry<?>> recyclerHandle; // 回收该对象
+            PoolChunk<T> chunk; // ByteBuf之前分配所属的Chunk，chunk、handle和normCapacity这三个数据指向PoolArena中的一块内存
             ByteBuffer nioBuffer;
-            long handle = -1;
+            long handle = -1; // ByteBuf在Chunk中的分配信息
             int normCapacity;
 
             Entry(Handle<Entry<?>> recyclerHandle) {
