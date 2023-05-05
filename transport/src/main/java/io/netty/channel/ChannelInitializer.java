@@ -69,7 +69,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
      *                      the {@link Channel}.
      */
     protected abstract void initChannel(C ch) throws Exception;
-
+    // 当 channel 被注册后回调，即被 pipeline.fireChannelRegistered(); 触发后
     @Override
     @SuppressWarnings("unchecked")
     public final void channelRegistered(ChannelHandlerContext ctx) throws Exception {

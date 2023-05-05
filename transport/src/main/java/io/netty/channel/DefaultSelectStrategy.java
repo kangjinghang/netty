@@ -24,9 +24,10 @@ final class DefaultSelectStrategy implements SelectStrategy {
     static final SelectStrategy INSTANCE = new DefaultSelectStrategy();
 
     private DefaultSelectStrategy() { }
-    // 默认策略是：如果有普通任务待执行，使用selectNow()；否则使用select(boolean oldWakenUp)
+    // 默认策略是：如果有任务正在等待，那么应该使用无阻塞的 selectNow()，如果没有任务在等待，那么就可以使用带阻塞的 select 操作
     @Override
     public int calculateStrategy(IntSupplier selectSupplier, boolean hasTasks) throws Exception {
-        return hasTasks ? selectSupplier.get() : SelectStrategy.SELECT;
+        // queue 中有 task，执行一次 selectNow，并作为此方法返回值（>=0）返回。
+        return hasTasks ? selectSupplier.get() : SelectStrategy.SELECT; // 所以当前实现返回值可能是 -1,0或>0的整数
     }
 }

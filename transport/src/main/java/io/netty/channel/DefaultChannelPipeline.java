@@ -809,10 +809,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         buf.append('}');
         return buf.toString();
     }
-
+    // Registered 属于 Inbound 事件，接下来要做的就是执行 pipeline 中的 Inbound 类型的 handlers 中的 channelRegistered() 方法
     @Override
     public final ChannelPipeline fireChannelRegistered() {
-        AbstractChannelHandlerContext.invokeChannelRegistered(head); // 注意这里的传参是 head
+        AbstractChannelHandlerContext.invokeChannelRegistered(head); // 注意这里的传参是 head，第一个节点 head 的 channelRegistered() 会被首先执行
         return this;
     }
 
@@ -970,7 +970,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
-        return tail.bind(localAddress, promise);
+        return tail.bind(localAddress, promise); // 重点。tailContext 来真正 bind 到 localAddress
     }
 
     @Override
@@ -1331,7 +1331,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void bind(
                 ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise) {
-            unsafe.bind(localAddress, promise);
+            unsafe.bind(localAddress, promise); // 重点。最后也是 HeadContext 的 unsafe 来执行 bind
         }
         // HeadContext来执行connect
         @Override
@@ -1360,7 +1360,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void read(ChannelHandlerContext ctx) {
             // 实际上就是注册OP_ACCEPT/OP_READ事件：创建连接或者读事件。读数据，实际设置关心OP_READ事件，当数据到来时触发ChannelRead入站事件
-            unsafe.beginRead(); // 委托到AbstractUnsafe
+            unsafe.beginRead(); // 重点。又是委托到AbstractUnsafe
         }
         // headContext write msg
         @Override
@@ -1377,11 +1377,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             ctx.fireExceptionCaught(cause);
         }
-
+        // channelRegistered 是 Inbound 事件，HeadContext 会首先被执行
         @Override
         public void channelRegistered(ChannelHandlerContext ctx) {
             invokeHandlerAddedIfNeeded(); // 1. 这一步是 head 对于 channelRegistered 事件的处理。没有我们要关心的
-            ctx.fireChannelRegistered(); // 2. 向后传播 Inbound 事件
+            ctx.fireChannelRegistered(); // 2. 继续向后传播 Inbound 事件
         }
 
         @Override
@@ -1396,8 +1396,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
-            ctx.fireChannelActive();
-            // 注册读事件：读包括：创建连接/读数据
+            ctx.fireChannelActive(); // 继续传播 ChannelActive 事件
+            // 注册读事件：读包括：创建连接/读数据。开启自动读的话，这时可以读数据了
             readIfIsAutoRead(); // socket连接时触发入站事件channelActive，然后向自身发出read()请求  // 自动读取
         }
 
@@ -1420,7 +1420,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         private void readIfIsAutoRead() {
             if (channel.config().isAutoRead()) { // 默认情况下，Channel都是默认开启自动读取模式的，即只要Channel是active的，读完一波数据之后就继续向selector注册读事件，这样就可以连续不断得读取数据
-                channel.read();
+                channel.read(); // 执行 channel read 方法
             }
         }
 

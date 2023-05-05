@@ -51,8 +51,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
     private final SelectableChannel ch; // 包装的JDK Channel
-    protected final int readInterestOp;  // Read事件，服务端OP_ACCEPT，其他OP_READ
-    volatile SelectionKey selectionKey;  // JDK Channel对应的选择键
+    protected final int readInterestOp;  // Read事件，nioServerSockectChannel 的话是 OP_ACCEPT，其他OP_READ
+    volatile SelectionKey selectionKey;  // JDK Channel对应的选择键。被doRegister() 时， selectionKey 中的 ops 是 0
     boolean readPending;  // 底层读事件进行标记
     private final Runnable clearReadPendingRunnable = new Runnable() {
         @Override
@@ -79,7 +79,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
         super(parent);
         this.ch = ch; // 保存到成员变量
-        this.readInterestOp = readInterestOp;
+        this.readInterestOp = readInterestOp; // 保存到 readInterestOp。nioServerSockectChannel 的话这里是 SelectionKey.OP_ACCEPT
         try { // 设置该channel为非阻塞模式，标准的JDK NIO编程的玩法
             ch.configureBlocking(false);
         } catch (IOException e) {
@@ -258,10 +258,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                             @Override
                             public void run() {
                                 ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
-                                if (connectPromise != null && !connectPromise.isDone()
+                                if (connectPromise != null && !connectPromise.isDone() // 定时任务执行时 connectPromise 已经失败
                                         && connectPromise.tryFailure(new ConnectTimeoutException(
                                                 "connection timed out: " + remoteAddress))) {
-                                    close(voidPromise());
+                                    close(voidPromise()); // 关闭 channel
                                 }
                             }
                         }, connectTimeoutMillis, TimeUnit.MILLISECONDS);
@@ -270,12 +270,12 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                     promise.addListener(new ChannelFutureListener() {
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
-                            if (future.isCancelled()) {
+                            if (future.isCancelled()) { // 任务被取消
                                 if (connectTimeoutFuture != null) { // 连接操作取消则连接超时检测任务取消
                                     connectTimeoutFuture.cancel(false);
                                 }
                                 connectPromise = null;
-                                close(voidPromise());
+                                close(voidPromise());  // 关闭 channel
                             }
                         }
                     });
@@ -376,8 +376,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     protected void doRegister() throws Exception {
         boolean selected = false;
         for (;;) {
-            try { // 调用 JDK 的 API，将 channel 注册到 nioEventLoop 里绑定的 selector ，ops = 0 ，
-                selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
+            try { // 调用 JDK 的 API，将 channel 注册到 nioEventLoop 里绑定的 selector ，ops = 0 ，同时把自己 NioChannel 作为 attachment 绑定
+                selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this); // selectionKey 中的 ops 是 0
                 return;
             } catch (CancelledKeyException e) {
                 if (!selected) {
@@ -402,20 +402,20 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     @Override
     protected void doBeginRead() throws Exception {
         // Channel.read() or ChannelHandlerContext.read() was called
-        // 前面register步骤返回的对象，前面我们在register的时候，注册的ops是0
+        // 前面register步骤返回的对象，前面我们在 doRegister的时候，注册的 ops 是0
         final SelectionKey selectionKey = this.selectionKey;
         if (!selectionKey.isValid()) { // 选择键被取消而不再有效
             return;
         }
 
         readPending = true; // 设置底层读事件正在进行
-        // 获取前面监听的 ops = 0，
+        // 获取前面监听的 ops = 0，也就是什么都不监听。
         final int interestOps = selectionKey.interestOps();
         // 假设之前没有监听readInterestOp，则监听readInterestOp
         // 就是之前new NioServerSocketChannel 时 super(null, channel, SelectionKey.OP_ACCEPT); 传进来保存到则监听readInterestOp的
         if ((interestOps & readInterestOp) == 0) { // interestOps 不包括 readInterestOp，https://cloud.tencent.com/developer/article/1603990
             logger.info("interest ops：{}", readInterestOp);
-            selectionKey.interestOps(interestOps | readInterestOp); // 真正的注册 interestOps，做好连接的准备
+            selectionKey.interestOps(interestOps | readInterestOp); // 前面都没准备好。真正的注册 interestOps，【做好连接的准备】了。
         }
     }
 

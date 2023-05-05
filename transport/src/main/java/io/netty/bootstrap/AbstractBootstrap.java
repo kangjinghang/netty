@@ -63,8 +63,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
 
     // The order in which ChannelOptions are applied is important they may depend on each other for validation
     // purposes.
-    private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
-    private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
+    private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>(); // ChannelOption 可以在 new BootStrap 的时候设置
+    private final Map<AttributeKey<?>, Object> attrs = new ConcurrentHashMap<AttributeKey<?>, Object>(); // AttributeKey 可以在 new BootStrap 的时候设置
     private volatile ChannelHandler handler;
 
     AbstractBootstrap() {
@@ -269,16 +269,16 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
     // 3步，第一步创建，第二步 init ，第三步 register 到selector
     private ChannelFuture doBind(final SocketAddress localAddress) {
-        final ChannelFuture regFuture = initAndRegister();
+        final ChannelFuture regFuture = initAndRegister(); // 创建并初始化 channel，并绑定到 java nio selector
         final Channel channel = regFuture.channel();
         if (regFuture.cause() != null) {
             return regFuture;
         }
-        // 不能肯定register完成，因为register是丢到 nio event loop 里面执行去了
+        // 不能肯定register完成，因为register是丢到 nio event loop 里面异步执行去了
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
-            doBind0(regFuture, channel, localAddress, promise);
+            doBind0(regFuture, channel, localAddress, promise); // 重点。执行 doBind0()
             return promise;
         } else {
             // Registration future is almost always fulfilled already, but just in case it's not.
@@ -297,20 +297,20 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
                         // See https://github.com/netty/netty/issues/2586
                         promise.registered();
 
-                        doBind0(regFuture, channel, localAddress, promise);
+                        doBind0(regFuture, channel, localAddress, promise); // 重点。执行 doBind0()
                     }
                 }
             });
             return promise;
         }
     }
-
+    // 创建并初始化 channel，并绑定到 java nio selector
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
             // 反射加工厂创建channel，比如 nioServerSocketChannel
             channel = channelFactory.newChannel();
-            init(channel); // 初始化
+            init(channel); // 初始化 channel
         } catch (Throwable t) {
             if (channel != null) {
                 // channel can be null if newChannel crashed (eg SocketException("too many open files"))
@@ -321,8 +321,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
-        // 开始 register
-        ChannelFuture regFuture = config().group().register(channel);
+        // 通过 channel 的 unsafe，开始 register channel 到 eventLoopGroup
+        ChannelFuture regFuture = config().group().register(channel); // 同时，也会给 AbstractChannel#eventLoop 属性赋值
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
                 channel.close();
@@ -341,21 +341,21 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         //         because register(), bind(), and connect() are all bound to the same thread.
         // 如果到这里，说明后续可以进行 connect() 或 bind() 了，因为两种情况：1. 如果 register 动作是在 eventLoop 中发起的，那么到这里的时候，register 一定已经完成
         return regFuture; // 2. 如果 register 任务已经提交到 eventLoop 中，也就是进到了 eventLoop 中的 taskQueue 中，由于后续的 connect 或 bind 也会进入到同一个 eventLoop 的 queue 中，所以一定是会先 register 成功，才会执行 connect 或 bind
-    }
+    } // register 任务一定先于 connect()/bind() 任务 被放置到 eventLoop 中
 
     abstract void init(Channel channel) throws Exception;
-
+    // 真正 bind
     private static void doBind0(
-            final ChannelFuture regFuture, final Channel channel,
+            final ChannelFuture regFuture, final Channel channel, // regFuture 是注册Future，已经被放到 eventLoop 了
             final SocketAddress localAddress, final ChannelPromise promise) {
 
         // This method is invoked before channelRegistered() is triggered.  Give user handlers a chance to set up
         // the pipeline in its channelRegistered() implementation.
-        channel.eventLoop().execute(new Runnable() {
+        channel.eventLoop().execute(new Runnable() { // 又是异步化，放到 eventLoop 中执行
             @Override
             public void run() {
-                if (regFuture.isSuccess()) {
-                    channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE);
+                if (regFuture.isSuccess()) { // regFuture 是注册Future，已经被放到 eventLoop 了。执行到这里，说明前面的 regFuture 已经由结果了
+                    channel.bind(localAddress, promise).addListener(ChannelFutureListener.CLOSE_ON_FAILURE); // 重点。channel bind 到 localAddress
                 } else {
                     promise.setFailure(regFuture.cause());
                 }
@@ -366,7 +366,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     /**
      * the {@link ChannelHandler} to use for serving the requests.
      */
-    public B handler(ChannelHandler handler) {
+    public B handler(ChannelHandler handler) { // 设置 handler
         this.handler = ObjectUtil.checkNotNull(handler, "handler");
         return self();
     }
@@ -386,11 +386,11 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * of the bootstrap.
      */
     public abstract AbstractBootstrapConfig<B, C> config();
-
+    // 初始化的时候调用，options 通常是 empty 的
     final Map.Entry<ChannelOption<?>, Object>[] newOptionsArray() {
         return newOptionsArray(options);
     }
-
+    // 初始化的时候调用，返回 empty map
     static Map.Entry<ChannelOption<?>, Object>[] newOptionsArray(Map<ChannelOption<?>, Object> options) {
         synchronized (options) {
             return new LinkedHashMap<ChannelOption<?>, Object>(options).entrySet().toArray(EMPTY_OPTION_ARRAY);
@@ -450,14 +450,14 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             channel.attr(key).set(e.getValue());
         }
     }
-
+    // 设置 option
     static void setChannelOptions(
             Channel channel, Map.Entry<ChannelOption<?>, Object>[] options, InternalLogger logger) {
         for (Map.Entry<ChannelOption<?>, Object> e: options) {
             setChannelOption(channel, e.getKey(), e.getValue(), logger);
         }
     }
-
+    // 设置 option
     @SuppressWarnings("unchecked")
     private static void setChannelOption(
             Channel channel, ChannelOption<?> option, Object value, InternalLogger logger) {

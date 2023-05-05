@@ -132,28 +132,28 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         setChannelOptions(channel, newOptionsArray(), logger); // 初始化 option
         setAttributes(channel, newAttributesArray()); // 初始化 channel 的属性
 
-        ChannelPipeline p = channel.pipeline(); // 构建一个 pipeline
-        // 以上属性都是为了初始化 socketChannel 来使用的
+        ChannelPipeline p = channel.pipeline(); // 得到 channel 关联的 pipeline
+        // 以下属性都是为了初始化 socketChannel 来使用的
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
         final Entry<ChannelOption<?>, Object>[] currentChildOptions = newOptionsArray(childOptions);
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = newAttributesArray(childAttrs);
         // ChannelInitializer一次性，初始化handler
-        // 负责添加一个ServerBootstrapAcceptor handler，添加完后，自己就移除了
+        // 作用就是负责添加一个ServerBootstrapAcceptor handler，添加完后，自己就移除了
         // ServerBootstrapAcceptor handler（Reactor模式的Acceptor）：负责接收客户端连接创建连接后，对连接的初始化工作。
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
-            public void initChannel(final Channel ch) {
+            public void initChannel(final Channel ch) { // 当 Channel 被 Registered 成功后，才会被调用（此时 ch.eventLoop()已经被赋值了），晚于 ChannelFuture regFuture = config().group().register(channel);
                 final ChannelPipeline pipeline = ch.pipeline();
                 ChannelHandler handler = config.handler();
-                if (handler != null) {
+                if (handler != null) { // 如果 new ServerBootStrap 的时候设置了 handler，这时候设置到 pipeline 末尾
                     pipeline.addLast(handler);
                 }
 
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
-                        pipeline.addLast(new ServerBootstrapAcceptor( // Reactor模式的Acceptor
+                        pipeline.addLast(new ServerBootstrapAcceptor( // 最后再添加 Reactor 模式的Acceptor（ServerBootstrapAcceptor）
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs));
                     }
                 });

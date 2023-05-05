@@ -41,7 +41,7 @@ import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
  * <a href="https://www.facebook.com/notes/facebook-engineering/scalable-memory-allocation-using-jemalloc/480222803919">
  * Scalable memory allocation using jemalloc</a>.
  */
-final class PoolThreadCache {
+final class PoolThreadCache { // 每个线程独有。内部持有 MemoryRegionCache 集合和 PoolArena
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(PoolThreadCache.class);
     private static final int INTEGER_SIZE_MINUS_ONE = Integer.SIZE - 1;
@@ -331,7 +331,7 @@ final class PoolThreadCache {
             chunk.initBuf(buf, nioBuffer, handle, reqCapacity, threadCache);
         }
     }
-
+    // 当某线程要释放内存页时，会把这个内存页缓存到 MemoryRegionCache中，方便下次直接获取。
     private abstract static class MemoryRegionCache<T> {
         private final int size; // 队列长度
         private final Queue<Entry<T>> queue; // 队列

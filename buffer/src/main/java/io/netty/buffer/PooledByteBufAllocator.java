@@ -34,7 +34,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
-
+// 分配内存的入口类，可以看成一个入口类
 public class PooledByteBufAllocator extends AbstractByteBufAllocator implements ByteBufAllocatorMetricProvider {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(PooledByteBufAllocator.class);
@@ -185,7 +185,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     private final int normalCacheSize;
     private final List<PoolArenaMetric> heapArenaMetrics;
     private final List<PoolArenaMetric> directArenaMetrics;
-    private final PoolThreadLocalCache threadCache;
+    private final PoolThreadLocalCache threadCache; // 继承了 FastThreadLocal，存储的内容是每个线程对应的 PoolThreadCache
     private final int chunkSize;
     private final PooledByteBufAllocatorMetric metric;
 
@@ -496,7 +496,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     public void freeThreadLocalCache() {
         threadCache.remove();
     }
-    // 继承了 FastThreadLocal，存储的内容是 PoolThreadCache
+    // 继承了 FastThreadLocal，存储的内容是每个线程对应的 PoolThreadCache
     final class PoolThreadLocalCache extends FastThreadLocal<PoolThreadCache> {
         private final boolean useCacheForAllThreads;
 

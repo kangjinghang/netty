@@ -35,7 +35,7 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  * {@link UnpooledByteBufAllocator#heapBuffer(int, int)}, {@link Unpooled#buffer(int)} and
  * {@link Unpooled#wrappedBuffer(byte[])} instead of calling the constructor explicitly.
  */
-public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf {
+public class UnpooledHeapByteBuf extends AbstractReferenceCountedByteBuf { // 不使用对象池技术的Java堆字节数组
 
     private final ByteBufAllocator alloc; // 分配器
     byte[] array; // 底层字节数组

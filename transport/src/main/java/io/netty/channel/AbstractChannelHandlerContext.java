@@ -105,7 +105,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
                                   String name, Class<? extends ChannelHandler> handlerClass) {
         this.name = ObjectUtil.checkNotNull(name, "name");
         this.pipeline = pipeline;
-        this.executor = executor;
+        this.executor = executor; // 每个 channelHandler 都可以使用自己的 executor，否则用 eventLoop
         this.executionMask = mask(handlerClass); // 调用ChannelHandlerMask#mask()，得到context关联的handler对象支持回调的事件类型，默认情况下，ChannelInboundHandler和ChannelOutboundHandler支持上述MASK_ALL_INBOUND和MASK_ALL_OUTBOUND所表示的事件。
         // Its ordered if its driven by the EventLoop or the given Executor is an instanceof OrderedEventExecutor.
         ordered = executor == null || executor instanceof OrderedEventExecutor; // 只有执行线程为EventLoop或者标记为OrderedEventExecutor才是顺序的
@@ -504,7 +504,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     private void invokeBind(SocketAddress localAddress, ChannelPromise promise) {
         if (invokeHandler()) {
             try {
-                ((ChannelOutboundHandler) handler()).bind(this, localAddress, promise);
+                ((ChannelOutboundHandler) handler()).bind(this, localAddress, promise); // 其实主要是 headContext 来 bind
             } catch (Throwable t) {
                 notifyOutboundHandlerException(t, promise);
             }
@@ -793,7 +793,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             } else {
                 next.invokeWrite(m, promise);
             }
-        } else {  // 用户线程调用，比如在消息推送系统中，Channel channel = getChannel(userInfo); channel.writeAndFlush(pushInfo);
+        } else {  // 【用户线程调用，比如在消息推送系统中，根据用户标识找到对应的 channel】，提交到 mpsc queue，Channel channel = getChannel(userInfo); channel.writeAndFlush(pushInfo);
             final WriteTask task = WriteTask.newInstance(next, m, promise, flush);
             if (!safeExecute(executor, task, promise, m, !flush)) {
                 // We failed to submit the WriteTask. We need to cancel it so we decrement the pending bytes

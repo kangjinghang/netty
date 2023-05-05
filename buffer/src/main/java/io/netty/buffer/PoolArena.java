@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static io.netty.buffer.PoolChunk.isSubpage;
 import static java.lang.Math.max;
-
+// 管理PoolChunk以及tiny和small类型的subPages
 abstract class PoolArena<T> extends SizeClasses implements PoolArenaMetric {
     static final boolean HAS_UNSAFE = PlatformDependent.hasUnsafe();
 

@@ -162,7 +162,7 @@ public abstract class AbstractEventExecutor extends AbstractExecutorService impl
     protected static void safeExecute(Runnable task) {
         try {
             task.run();
-        } catch (Throwable t) {
+        } catch (Throwable t) { // 忽略任何异常
             logger.warn("A task raised an exception. Task: {}", task, t);
         }
     }

@@ -135,7 +135,7 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     public long getDelay(TimeUnit unit) {
         return unit.convert(delayNanos(), TimeUnit.NANOSECONDS);
     }
-
+    // 优先级任务队列比较逻辑
     @Override
     public int compareTo(Delayed o) {
         if (this == o) {
@@ -157,36 +157,36 @@ final class ScheduledFutureTask<V> extends PromiseTask<V> implements ScheduledFu
     }
 
     @Override
-    public void run() {
+    public void run() { // 实现是 jdk 中的 Runnable 的 run，定时 executor 调度到了自己
         assert executor().inEventLoop();
         try {
-            if (delayNanos() > 0L) {
+            if (delayNanos() > 0L) { // 还没到任务到期时间
                 // Not yet expired, need to add or remove from queue
-                if (isCancelled()) {
+                if (isCancelled()) { // 已取消，从队列中移除
                     scheduledExecutor().scheduledTaskQueue().removeTyped(this);
-                } else {
+                } else { // 再次把自己添加到定时任务队列
                     scheduledExecutor().scheduleFromEventLoop(this);
                 }
-                return;
+                return; // 还没到时间，先 return
             }
-            // 对应 "若干时间后执行一次" 的定时任务类型，执行完了该任务就结束
-            if (periodNanos == 0) {
+            // 到这里，说明任务截止时间已经到了，或者已经过期了
+            if (periodNanos == 0) { // 对应 "若干时间后【仅】执行一次" 的定时任务类型，执行完了该任务就结束
                 if (setUncancellableInternal()) {
-                    V result = runTask();
-                    setSuccessInternal(result);
+                    V result = runTask(); // 真正执行
+                    setSuccessInternal(result); // 设置结果
                 }
             } else {
                 // check if is done as it may was cancelled
                 if (!isCancelled()) { // 重复的任务可能被取消
                     // 先执行任务，然后再区分是哪种类型的任务
                     runTask();
-                    if (!executor().isShutdown()) { // 线程已经关闭则不再添加新任
+                    if (!executor().isShutdown()) { // 线程已经关闭则不再添加新任务
                         if (periodNanos > 0) { // 表示是以固定频率执行某个任务，和任务的持续时间无关，然后，设置该任务的下一次截止时间为本次的截止时间加上间隔时间periodNanos
                             deadlineNanos += periodNanos;
-                        } else { // 否则就是每次任务执行完毕之后，间隔多长时间之后再次执行，截止时间为当前时间加上间隔时间，-p（p此时为负数）就表示加上一个正的间隔时间
+                        } else { // 否则就是每次任务执行【完毕】之后，间隔多长时间之后再次执行，截止时间为当前时间加上间隔时间，-p（p此时为负数）就表示加上一个正的间隔时间
                             deadlineNanos = nanoTime() - periodNanos;
                         }
-                        if (!isCancelled()) {
+                        if (!isCancelled()) { // 重复的任务可能被取消
                             scheduledExecutor().scheduledTaskQueue().add(this); // 下一个最近的重复任务添加到任务队列
                         }
                     }

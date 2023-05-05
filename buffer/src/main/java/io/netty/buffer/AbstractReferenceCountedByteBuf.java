@@ -22,7 +22,7 @@ import io.netty.util.internal.ReferenceCountUpdater;
 
 /**
  * Abstract base class for {@link ByteBuf} implementations that count references.
- */
+ */ // 实现引用计数相关的功能。引用计数的功能简单理解就是：当需要使用一个对象时，计数加1；不再使用时，计数减1
 public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
     private static final long REFCNT_FIELD_OFFSET =
             ReferenceCountUpdater.getUnsafeOffset(AbstractReferenceCountedByteBuf.class, "refCnt");
@@ -43,7 +43,7 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
 
     // Value might not equal "real" reference count, all access should be via the updater
     @SuppressWarnings({"unused", "FieldMayBeFinal"})
-    private volatile int refCnt = updater.initialValue();
+    private volatile int refCnt = updater.initialValue(); // 实际的引用计数值，默认为2
 
     protected AbstractReferenceCountedByteBuf(int maxCapacity) {
         super(maxCapacity);
@@ -74,7 +74,7 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
     protected final void resetRefCnt() {
         updater.resetRefCnt(this);
     }
-
+    // 增加引用计数
     @Override
     public ByteBuf retain() {
         return updater.retain(this);
@@ -94,7 +94,7 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
     public ByteBuf touch(Object hint) {
         return this;
     }
-
+    // 减少引用计数
     @Override
     public boolean release() {
         return handleRelease(updater.release(this));

@@ -40,7 +40,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
     private final ByteBufAllocator alloc;  // 分配器
     // 底层NIO直接ByteBuff
     ByteBuffer buffer; // accessed by UnpooledUnsafeNoCleanerDirectByteBuf.reallocateDirect()
-    private ByteBuffer tmpNioBuf;  // 用于IO操作的ByteBuffer
+    private ByteBuffer tmpNioBuf;  // 用于IO操作的ByteBuffer，实现实质是 buffer.duplicate() 即与`buffer`共享底层数据结构
     private int capacity;  // ByteBuf的容量
     private boolean doNotFree; // 释放标记，为true时表示不需要释放旧的Buffer
 
@@ -67,11 +67,11 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     /**
      * Creates a new direct buffer by wrapping the specified initial buffer.
-     *
+     * 使用 initialBuffer 来创建一个新的 DirectByteBuf
      * @param maxCapacity the maximum capacity of the underlying direct buffer
      */
     protected UnpooledDirectByteBuf(ByteBufAllocator alloc, ByteBuffer initialBuffer, int maxCapacity) {
-        this(alloc, initialBuffer, maxCapacity, false, true);
+        this(alloc, initialBuffer, maxCapacity, false, true); // doFree 设置成 false，
     }
 
     UnpooledDirectByteBuf(ByteBufAllocator alloc, ByteBuffer initialBuffer,
@@ -93,7 +93,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
-        doNotFree = !doFree; // doFree为false时，doNotFree置为true，表示不需要释放原有buffer
+        doNotFree = !doFree; // doFree为false时，doNotFree置为true，表示不需要释放原有 initialBuffer，使用 initialBuffer 创建时不要释放原来的 initialBuffer
         setByteBuffer((slice ? initialBuffer.slice() : initialBuffer).order(ByteOrder.BIG_ENDIAN), false);
         writerIndex(initialCapacity); // 此时 doNotFree已经为false
     }
@@ -117,9 +117,9 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         if (tryFree) {
             ByteBuffer oldBuffer = this.buffer;
             if (oldBuffer != null) {
-                if (doNotFree) {
+                if (doNotFree) { // 不要释放旧的，后面 this.buffer 会被设置为 buffer
                     doNotFree = false; // 当doNotFree为true时，调用后置为false
-                } else {
+                } else { // 释放旧的，即 this.buffer
                     freeDirect(oldBuffer); // false时都需要freeDirect(oldBuffer)
                 }
             }

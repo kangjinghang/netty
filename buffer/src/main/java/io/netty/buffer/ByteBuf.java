@@ -2460,7 +2460,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
 
     @Override
     public abstract ByteBuf retain(int increment);
-
+    // 增加引用计数
     @Override
     public abstract ByteBuf retain();
 

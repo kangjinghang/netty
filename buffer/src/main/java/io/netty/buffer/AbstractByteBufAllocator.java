@@ -138,7 +138,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
     @Override
     public ByteBuf ioBuffer(int initialCapacity) {
         if (PlatformDependent.hasUnsafe() || isDirectBufferPooled()) {
-            return directBuffer(initialCapacity); // 默认走这里
+            return directBuffer(initialCapacity);
         }
         return heapBuffer(initialCapacity);
     }
@@ -269,7 +269,7 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
             if (newCapacity > maxCapacity - threshold) {
                 newCapacity = maxCapacity; // 超过最大容量不再扩增
             } else {
-                newCapacity += threshold; // 增加4MB
+                newCapacity += threshold; // minNewCapacity 向上取到4MB倍数
             }
             return newCapacity;
         }

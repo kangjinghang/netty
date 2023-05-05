@@ -77,15 +77,15 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
     }
 
     @Override
-    public ChannelFuture register(Channel channel) {
+    public ChannelFuture register(Channel channel) { // 把 channel 注册到 eventLoop 上
         return register(new DefaultChannelPromise(channel, this));
     }
 
     @Override
     public ChannelFuture register(final ChannelPromise promise) {
         ObjectUtil.checkNotNull(promise, "promise");
-        promise.channel().unsafe().register(this, promise); // promise 关联了 channel，channel 持有 Unsafe 实例，register 操作就封装在 Unsafe 中
-        return promise;
+        promise.channel().unsafe().register(this, promise); // 重点：promise 关联了 channel，channel 持有 Unsafe 实例，register 操作就封装在 Unsafe 中
+        return promise; // 其实是由 channel 的 unsafe 把 channel 注册到 eventLoop 的
     }
 
     @Deprecated

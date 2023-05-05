@@ -20,7 +20,7 @@ import java.util.AbstractSet;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
-
+// 用数组实现 hashSet
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 
     /**
@@ -45,7 +45,7 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
         keys[size++] = o;
         // 当数组占满时，进行扩容
         if (size == keys.length) {
-            increaseCapacity();
+            increaseCapacity(); // 容量乘2
         }
 
         return true;

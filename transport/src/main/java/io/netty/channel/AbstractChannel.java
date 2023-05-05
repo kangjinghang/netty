@@ -38,7 +38,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * A skeletal {@link Channel} implementation.
+ * A skeletal {@link Channel} implementation. 对I/O事件的处理，都委托给 ChannelPipeline 处理
  */
 public abstract class AbstractChannel extends DefaultAttributeMap implements Channel {
 
@@ -72,8 +72,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         this.parent = parent;
         // new出来三大组件（id，unsafe，pipeline），赋值到成员变量
         id = newId(); // 每条channel的唯一标识
-        unsafe = newUnsafe();
-        pipeline = newChannelPipeline();
+        unsafe = newUnsafe(); // 子类重写
+        pipeline = newChannelPipeline(); // 子类重写
     }
 
     /**
@@ -255,10 +255,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         pipeline.flush();
         return this;
     }
-
+    // channel bind 到 localAddress
     @Override
     public ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
-        return pipeline.bind(localAddress, promise);
+        return pipeline.bind(localAddress, promise); // 还是调用pipeline 的 bind()
     }
 
     @Override
@@ -461,11 +461,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         public final SocketAddress remoteAddress() {
             return remoteAddress0();
         }
-
+        // 将当前 channel 注册到 eventLoop
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             ObjectUtil.checkNotNull(eventLoop, "eventLoop");
-            if (isRegistered()) { // 已经注册则失败
+            if (isRegistered()) { // 已经注册，则返回失败
                 promise.setFailure(new IllegalStateException("registered to an event loop already"));
                 return;
             }
@@ -474,8 +474,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
                 return;
             }
-            // 将这个 eventLoop 实例设置给这个 channel，从此这个 channel 就是有 eventLoop 的了，这一步其实挺关键的，因为后续该 channel 中的所有异步操作，都要提交给这个 eventLoop 来执行
-            AbstractChannel.this.eventLoop = eventLoop;
+            // 重点。将这个 eventLoop 实例设置（绑定）给这个 channel，从此这个 channel 就是有 eventLoop 的了，这一步其实挺关键的，因为后续该 channel 中的所有异步操作，都要提交给这个 eventLoop 来执行
+            AbstractChannel.this.eventLoop = eventLoop; // 给 AbstractChannel#eventLoop 属性赋值
             // 判断自己的线程（currentThread）是不是 nioEventLoop 里的线程，比如注册的时候，currentThread 是 main thead
             if (eventLoop.inEventLoop()) { // 对于我们来说，它不会进入到这个分支，之所以有这个分支，是因为我们是可以 unregister，然后再 register 的，后面再仔细看
                 register0(promise);
@@ -512,14 +512,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
-                pipeline.invokeHandlerAddedIfNeeded(); // 将用户Handler添加到ChannelPipeline
+                pipeline.invokeHandlerAddedIfNeeded(); // 将用户Handler添加到ChannelPipeline，执行 handlerAdded() 回调
 
-                safeSetSuccess(promise); // 设置当前 promise 的状态为 success，因为当前 register 方法是在 eventLoop 中的线程中执行的，需要通知提交 register 操作的线程
-                pipeline.fireChannelRegistered(); // 当前的 register 操作已经成功，该事件应该被 pipeline 上所有关心 register 事件的 handler 感知到，往 pipeline 中扔一个事件
+                safeSetSuccess(promise); // 设置当前 promise 的状态为 success，因为当前 register 方法是在 eventLoop 中的线程中执行的，需要通知提交 register 操作的线程（如 main 线程）
+                pipeline.fireChannelRegistered(); // 当前的 register 操作已经成功，该事件应该被 pipeline 上所有关心 register 事件的 handler 感知到，往 pipeline 中扔一个事件，channelRegistered() 会被回调
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
-                // server socket 的注册不会走进下面的 if，server socket 接受连接创建的 socket 可以走进去，因为 accept 后就 active 了
-                if (isActive()) {
+                // server socket 的【注册】不会走进下面的 if，server socket 【接受连接创建的 socket】 可以走进去，因为 accept 后就 active 了
+                if (isActive()) { // server socket 的【注册】不会走进这里，因为此时还没执行 doBind0()。先 register 产生 registerFuture，然后如果 registerFuture 成功（执行 registed() 回调），再提交 bind 任务，得到 bindFuture。这里仅是 register，还早得很
                     if (firstRegistration) { // 如果该 channel 是第一次执行 register，那么 fire ChannelActive 事件
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
@@ -537,7 +537,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 safeSetFailure(promise, t);
             }
         }
-
+        // 重点。serverSocketChannel bind 操作
         @Override
         public final void bind(final SocketAddress localAddress, final ChannelPromise promise) {
             assertEventLoop();
@@ -561,18 +561,18 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             boolean wasActive = isActive();
             try {
-                doBind(localAddress); // 模板方法，细节由子类完成
+                doBind(localAddress); // 重点。真正的bind，模板方法，细节由子类完成。无异常的话 isActive() 会返回 true 了
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
                 closeIfClosed();
                 return;
             }
-            // 绑定后，才是开始激活
+            // 绑定后，才是开始变成 【激活】 状态
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
-                        pipeline.fireChannelActive(); // 触发Active事件
+                        pipeline.fireChannelActive(); // 触发Active事件，回调 channelActive()
                     }
                 });
             }
@@ -1098,7 +1098,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      *
      * Sub-classes may override this method
      */
-    protected void doRegister() throws Exception {
+    protected void doRegister() throws Exception { //  //进行 JDK 底层的操作：Channel 注册到 Selector 上。模板方法，细节由子类完成
         // NOOP
     }
 

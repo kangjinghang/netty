@@ -17,6 +17,7 @@ package io.netty.example.echo;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
@@ -33,7 +34,7 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 
 /**
- * Echoes back any received data from a client.
+ * Echoes back any received data from a client. 我的入口类
  */
 public final class EchoServer {
 
@@ -56,13 +57,14 @@ public final class EchoServer {
         final EchoServerHandler serverHandler = new EchoServerHandler();
         try {
             ServerBootstrap b = new ServerBootstrap();
+            final UnpooledByteBufAllocator bufAllocator = new UnpooledByteBufAllocator(false);
             b.group(bossGroup, workerGroup)
              .channel(NioServerSocketChannel.class)
              .option(ChannelOption.SO_BACKLOG, 100)
                     .childOption(ChannelOption.SO_KEEPALIVE,true)
                     .childOption(NioChannelOption.SO_KEEPALIVE, true)
              .handler(new LoggingHandler(LogLevel.INFO))
-                    .childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT)
+                    .childOption(ChannelOption.ALLOCATOR, bufAllocator)
              .childHandler(new ChannelInitializer<SocketChannel>() {
                  @Override
                  public void initChannel(SocketChannel ch) throws Exception {

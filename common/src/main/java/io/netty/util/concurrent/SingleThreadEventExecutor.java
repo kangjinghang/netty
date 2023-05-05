@@ -73,8 +73,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(
                     SingleThreadEventExecutor.class, ThreadProperties.class, "threadProperties");
-    // 普通任务队列，这个东西很重要，提交给 NioEventLoop 的任务都会进入到这个 taskQueue 中等待被执行，这个 queue 的默认容量是 16
-    private final Queue<Runnable> taskQueue; // 在任务提交的速度大于线程的处理速度的时候起到缓冲作用。或者用于异步地处理 Selector 监听到的 IO 事件。
+    // 普通任务队列，这个东西很重要，提交给 NioEventLoop 的任务都会进入到这个 taskQueue 中等待被执行，这个 queue 的默认容量是 16。【将外部线程的task聚集到队列，在reactor线程内部用单线程来串行】
+    private final Queue<Runnable> taskQueue; // 在任务提交的速度大于线程的处理速度的时候起到缓冲作用。或者用于异步地处理 Selector 监听到的 IO 事件。子类 NioEventLoop 中重写，使用默认 mpsc 队列
     // （taskQueue + scheduledTaskQueue）任务队列有三种使用场景：1.处理用户程序的自定义普通任务 2.处理用户程序的自定义【定时任务】 3.非当前 Reactor 线程调用当前 Channel 的各种方法（消息推送系统，根据UID找到channel然后write给用户消息）
     private volatile Thread thread;
     @SuppressWarnings("unused")
@@ -84,7 +84,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private final CountDownLatch threadLock = new CountDownLatch(1);
     private final Set<Runnable> shutdownHooks = new LinkedHashSet<Runnable>(); // 线程关闭钩子任务
-    private final boolean addTaskWakesUp; // 添加任务时是否唤醒线程
+    private final boolean addTaskWakesUp; // 外部添加任务的时候是否从 select() 中唤醒线程
     private final int maxPendingTasks; // 任务队列大小即未执行的最大任务数
     private final RejectedExecutionHandler rejectedExecutionHandler;
 
@@ -186,7 +186,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * calls on the this {@link Queue} it may make sense to {@code @Override} this and return some more performant
      * implementation that does not support blocking operations at all.
      */
-    protected Queue<Runnable> newTaskQueue(int maxPendingTasks) {
+    protected Queue<Runnable> newTaskQueue(int maxPendingTasks) { // 子类 NioEventLoop 中重写，使用默认 mpsc 队列
         return new LinkedBlockingQueue<Runnable>(maxPendingTasks);
     }
 
@@ -205,7 +205,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * @see Queue#poll()
      */
-    protected Runnable pollTask() {
+    protected Runnable pollTask() { // 从 taskQueue 队列头部取出一个任务
         assert inEventLoop();
         return pollTaskFrom(taskQueue);
     }
@@ -213,7 +213,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     protected static Runnable pollTaskFrom(Queue<Runnable> taskQueue) {
         for (;;) {
             Runnable task = taskQueue.poll();
-            if (task != WAKEUP_TASK) {
+            if (task != WAKEUP_TASK) { // != 标记任务
                 return task;
             }
         }
@@ -281,14 +281,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
         // nanoTime为当前时间(其实是当前纳秒减去"ScheduledFutureTask"类被加载时的纳秒时间数，)。
         long nanoTime = AbstractScheduledEventExecutor.nanoTime();
-        for (;;) {
-            Runnable scheduledTask = pollScheduledTask(nanoTime);
+        for (;;) { // 死循环
+            Runnable scheduledTask = pollScheduledTask(nanoTime); // 从 scheduledTaskQueue 取出任务
             if (scheduledTask == null) {
                 return true;
             }
             if (!taskQueue.offer(scheduledTask)) {
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
-                // 当taskQueue无法offer的时候，需要把从scheduledTaskQueue里面取出来的任务重新添加回去。
+                // 当 taskQueue 无法 offer 的时候，需要把从 scheduledTaskQueue 里面取出来的任务重新添加回去。
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask); // 任务队列已满，则重新添加到调度任务队列
                 return false;
             }
@@ -363,7 +363,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     /**
      * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.
-     * 将所有到期的调度任务从调度任务队列移入任务队列，并执行任务队列中的所有任务（包括非调度任务）
+     * 将所有到期的调度任务从【调度任务队列（scheduledTaskQueue）】移入任务队列，并执行【任务队列（taskQueue）中的所有任务】（包括非调度任务）
      * @return {@code true} if and only if at least one task was run
      */
     protected boolean runAllTasks() {
@@ -374,7 +374,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         do {
             // 转移task，从 scheduledTaskQueue -> 到taskQueue
             fetchedAll = fetchFromScheduledTaskQueue();
-            if (runAllTasksFrom(taskQueue)) {
+            if (runAllTasksFrom(taskQueue)) { // 从 taskQueue 拉取所有任务然后执行
                 ranAtLeastOne = true;
             }
         } while (!fetchedAll); // keep on processing until we fetched all scheduled tasks.
@@ -419,7 +419,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      *
      * @return {@code true} if at least one task was executed.
      */
-    protected final boolean runAllTasksFrom(Queue<Runnable> taskQueue) {
+    protected final boolean runAllTasksFrom(Queue<Runnable> taskQueue) { // 从 taskQueue 拉取所有任务然后执行
         Runnable task = pollTaskFrom(taskQueue);
         if (task == null) {
             return false;
@@ -457,15 +457,15 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.  This method stops running
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
      */
-    protected boolean runAllTasks(long timeoutNanos) {
+    protected boolean runAllTasks(long timeoutNanos) { // 执行超时后返回 true，所有都完成后返回 false
         // 1.从定时任务队列scheduledTaskQueue转移定时任务到普通任务队列taskQueue中去(mpsc queue)
-        fetchFromScheduledTaskQueue();
-        Runnable task = pollTask(); // 从任务队列头部取出一个任务
-        if (task == null) {
+        fetchFromScheduledTaskQueue(); // 从 scheduledTaskQueue 转移定时任务到 taskQueue(mpsc queue)
+        Runnable task = pollTask();  // 从 taskQueue 队列头部取出一个任务
+        if (task == null) { // 标记任务，结束
             afterRunningAllTasks();
             return false;
         }
-        // 2.计算本次任务循环的截止时间
+        // 2.计算本次任务循环的截止时间（当前时间+超时时间）
         final long deadline = timeoutNanos > 0 ? ScheduledFutureTask.nanoTime() + timeoutNanos : 0;
         long runTasks = 0;
         long lastExecutionTime;
@@ -502,7 +502,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * Invoked before returning from {@link #runAllTasks()} and {@link #runAllTasks(long)}.
      */
-    @UnstableApi
+    @UnstableApi // 收尾工作，子类 NioEventLoop 有重写
     protected void afterRunningAllTasks() { }
 
     /**
@@ -552,9 +552,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     protected void cleanup() {
         // NOOP
     }
-    // 使用这个标记任务是为了线程能正确退出，当线程需要关闭时，如果线程在take()方法上阻塞，就需要添加一个标记任务WAKEUP_TASK到任务队列，是线程从take()返回，从而正确关闭线程
-    protected void wakeup(boolean inEventLoop) {
-        if (!inEventLoop) { // 非本类原生线程或者本类原生线程需要关闭时，添加一个标记任务使线程从take()返回。offer失败表明任务队列已有任务，从而线程可以从take()返回故不处理
+    // 使用这个标记任务是为了线程能正确退出，当线程需要关闭时，如果线程在take()方法上阻塞，就需要添加一个标记任务WAKEUP_TASK到任务队列，使线程能从take()返回，从而正确关闭线程
+    protected void wakeup(boolean inEventLoop) { // 唤醒 selector.select(timeoutMillis)
+        if (!inEventLoop) { // 非本类原生线程或者本类原生线程需要关闭时，添加一个标记任务（WAKEUP_TASK）使线程从take()返回。offer失败表明任务队列已有任务，从而线程可以从take()操作得到返回值，故不处理
             // Use offer as we actually only need this to unblock the thread and if offer fails we do not care as there
             // is already something in the queue.
             taskQueue.offer(WAKEUP_TASK);
@@ -665,7 +665,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         gracefulShutdownQuietPeriod = unit.toNanos(quietPeriod); // 在default情况下会更新这两个值
         gracefulShutdownTimeout = unit.toNanos(timeout);
 
-        if (ensureThreadStarted(oldState)) {
+        if (ensureThreadStarted(oldState)) {  // 如果线程之前的状态为ST_NOT_STARTED，则说明该线程还未被启动过，那么启动该线程。
             return terminationFuture;
         }
 
@@ -849,9 +849,9 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 }
             }
         }
-        // 是否唤醒线程，addTaskWakesUp由构造方法配置，wakesUpForTask()可由子类覆盖，默认唤醒
-        if (!addTaskWakesUp && immediate) { // 这里这个参数值addTaskWakesUp和其说明有出入，现在false反而唤醒？
-            wakeup(inEventLoop);
+        // 外部添加任务的时候是否从 select() 中唤醒线程，addTaskWakesUp由构造方法配置，wakesUpForTask()可由子类覆盖，默认唤醒
+        if (!addTaskWakesUp && immediate) {
+            wakeup(inEventLoop); // 唤醒 selector.select(timeoutMillis)
         }
     }
 
@@ -959,7 +959,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
         }
     }
-
+    // 如果线程之前的状态为ST_NOT_STARTED，则说明该线程还未被启动过，那么启动该线程。
     private boolean ensureThreadStarted(int oldState) {
         if (oldState == ST_NOT_STARTED) {
             try {
@@ -992,7 +992,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
-                    SingleThreadEventExecutor.this.run(); // 具体的子类（NioEventLoop）去执行抽象的run()
+                    SingleThreadEventExecutor.this.run(); // 具体的子类（NioEventLoop）去执行抽象的run()，子类实现就是在不停的死循环
                     success = true;
                 } catch (Throwable t) {
                     logger.warn("Unexpected exception from an event executor: ", t);

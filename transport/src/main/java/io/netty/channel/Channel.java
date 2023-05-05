@@ -84,7 +84,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     /**
      * Return the {@link EventLoop} this {@link Channel} was registered to.
      */
-    EventLoop eventLoop();
+    EventLoop eventLoop(); // 注册的EventLoop
 
     /**
      * Returns the parent of this channel.
@@ -92,32 +92,32 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * @return the parent channel.
      *         {@code null} if this channel does not have a parent channel.
      */
-    Channel parent();
+    Channel parent();  // 父类Channel
 
     /**
      * Returns the configuration of this channel.
      */
-    ChannelConfig config();
+    ChannelConfig config(); // 配置参数
 
     /**
      * Returns {@code true} if the {@link Channel} is open and may get active later
      */
-    boolean isOpen();
+    boolean isOpen(); // 是否开放，并且稍后可能变成 active
 
     /**
      * Returns {@code true} if the {@link Channel} is registered with an {@link EventLoop}.
      */
-    boolean isRegistered();
+    boolean isRegistered();  // 是否注册到一个EventLoop
 
     /**
      * Return {@code true} if the {@link Channel} is active and so connected.
      */
-    boolean isActive();
+    boolean isActive(); // 对于ServerSocketChannel，True表示Channel已绑定到端口；对于SocketChannel，表示Channel可用（open）且已连接到对端。
 
     /**
      * Return the {@link ChannelMetadata} of the {@link Channel} which describe the nature of the {@link Channel}.
      */
-    ChannelMetadata metadata();
+    ChannelMetadata metadata(); // 元数据
 
     /**
      * Returns the local address where this channel is bound to.  The returned
@@ -128,7 +128,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * @return the local address of this channel.
      *         {@code null} if this channel is not bound.
      */
-    SocketAddress localAddress();
+    SocketAddress localAddress(); // 本地地址
 
     /**
      * Returns the remote address where this channel is connected to.  The
@@ -144,7 +144,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      *         the origination of the received message as this method will
      *         return {@code null}.
      */
-    SocketAddress remoteAddress();
+    SocketAddress remoteAddress(); // 远端地址
 
     /**
      * Returns the {@link ChannelFuture} which will be notified when this
@@ -158,7 +158,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      * this method returns {@code false} are queued until the I/O thread is
      * ready to process the queued write requests.
      */
-    boolean isWritable();
+    boolean isWritable(); // 表示Channel的可写状态，当Channel的写缓冲区outboundBuffer非null且可写时返回True。
 
     /**
      * Get how many bytes can be written until {@link #isWritable()} returns {@code false}.
@@ -175,17 +175,17 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     /**
      * Returns an <em>internal-use-only</em> object that provides unsafe operations.
      */
-    Unsafe unsafe();
+    Unsafe unsafe(); // Unsafe对象
 
     /**
      * Return the assigned {@link ChannelPipeline}.
      */
-    ChannelPipeline pipeline();
+    ChannelPipeline pipeline(); // 事件管道，用于处理IO事件
 
     /**
      * Return the assigned {@link ByteBufAllocator} which will be used to allocate {@link ByteBuf}s.
      */
-    ByteBufAllocator alloc();
+    ByteBufAllocator alloc(); // 字节缓存分配器
 
     @Override
     Channel read();
@@ -206,7 +206,7 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
      *   <li>{@link #voidPromise()}</li>
      * </ul>
      */
-    interface Unsafe {
+    interface Unsafe { // 作为Channel的内部类，【实际负责】处理底层NIO相关的I/O事件
 
         /**
          * Return the assigned {@link RecvByteBufAllocator.Handle} which will be used to allocate {@link ByteBuf}'s when
