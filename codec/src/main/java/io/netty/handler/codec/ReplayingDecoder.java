@@ -339,10 +339,10 @@ public abstract class ReplayingDecoder<S> extends ByteToMessageDecoder {
 
     @Override
     protected void callDecode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
-        replayable.setCumulation(in);
+        replayable.setCumulation(in); // 将 ByteBuf in封装成一个 ReplayingDecoderByteBuf 对象。在获取真实的数据前会先判断字节是否足够，如果不足够则会抛出一个Signal异常
         try {
             while (in.isReadable()) {
-                int oldReaderIndex = checkpoint = in.readerIndex();
+                int oldReaderIndex = checkpoint = in.readerIndex(); // 先记录 ByteBuf in 当前的读索引位置
                 int outSize = out.size();
 
                 if (outSize > 0) {
@@ -363,7 +363,7 @@ public abstract class ReplayingDecoder<S> extends ByteToMessageDecoder {
                 S oldState = state;
                 int oldInputLength = in.readableBytes();
                 try {
-                    decodeRemovalReentryProtection(ctx, replayable, out);
+                    decodeRemovalReentryProtection(ctx, replayable, out); // 将封装好的ReplayingDecoderByteBuf对象传递，底层会调用 decode()
 
                     // Check if this handler was removed before continuing the loop.
                     // If it was removed, it is not safe to continue to operate on the buffer.
@@ -385,7 +385,7 @@ public abstract class ReplayingDecoder<S> extends ByteToMessageDecoder {
                         }
                     }
                 } catch (Signal replay) {
-                    replay.expect(REPLAY);
+                    replay.expect(REPLAY); // 当readXXX操作的时候数据不足的话就会抛出一个Signal异常
 
                     // Check if this handler was removed before continuing the loop.
                     // If it was removed, it is not safe to continue to operate on the buffer.
@@ -398,7 +398,7 @@ public abstract class ReplayingDecoder<S> extends ByteToMessageDecoder {
                     // Return to the checkpoint (or oldPosition) and retry.
                     int checkpoint = this.checkpoint;
                     if (checkpoint >= 0) {
-                        in.readerIndex(checkpoint);
+                        in.readerIndex(checkpoint); // 将 ByteBuf 的 readerIndex 重置为本次解码前的位置
                     } else {
                         // Called by cleanup() - no need to maintain the readerIndex
                         // anymore because the buffer has been released already.

@@ -69,25 +69,25 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             assert eventLoop().inEventLoop();
             final ChannelConfig config = config();
             final ChannelPipeline pipeline = pipeline();
-            final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle(); // 获取之前在创建channel配置器的时候传入的AdaptiveRecvByteBufAllocator
-            allocHandle.reset(config); // 重置一些变量
+            final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle(); // 获取之前在创建channel配置器的时候传入的 AdaptiveRecvByteBufAllocator.HandleImpl实例
+            allocHandle.reset(config); // 重置一些变量，将 maxMessagePerRead重置为16，totalMessages、totalBytesRead重置为0；
 
             boolean closed = false;
             Throwable exception = null;
             try {
                 try {
-                    do { // 委托到所在的外部类NioSocketChannel，doReadMessages方法不断地读取消息，用 readBuf 作为容器，读取的是一个个连接
+                    do { // 委托到所在的外部类NioSocketChannel，doReadMessages方法不断地读取消息，将其放入到readBuf集合中，读取的是一个个连接
                         int localRead = doReadMessages(readBuf); // Message的含义我们可以当作是一个SelectableChannel，读的意思就是accept一个SelectableChannel
-                        if (localRead == 0) { // 没有数据可读
+                        if (localRead == 0) { // 没有数据可读，没有新的连接，退出 while 循环
                             break;
                         }
-                        if (localRead < 0) { // 读取出错
+                        if (localRead < 0) { // 读取出错，退出 while 循环
                             closed = true;
                             break;
                         }
 
-                        allocHandle.incMessagesRead(localRead); // 记录下创建的次数
-                    } while (continueReading(allocHandle));
+                        allocHandle.incMessagesRead(localRead); // 增加已经读取消息的个数，底层就是根据 localRead 的值对 totalMessages 属性进行累加。
+                    } while (continueReading(allocHandle)); // 在进行下一次循环进行消息的读取前，会先执行该判断，判断是否可以继续的去读取消息
                 } catch (Throwable t) {
                     exception = t;
                 }

@@ -346,8 +346,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
         final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
-        allocHandle.attemptedBytesRead(byteBuf.writableBytes());
-        return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead()); // 将jdk的 SelectableChannel的字节数据读取到netty的ByteBuf中
+        allocHandle.attemptedBytesRead(byteBuf.writableBytes()); // 根据 byteBuf 可写的字节数来设置 AdaptiveRecvByteBufAllocator.HandleImpl 的 attemptedBytesRead 属性。AdaptiveRecvByteBufAllocator 认为分配的 ByteBuf 中可写的字节数，就应该是【本次尝试读取到的字节数】
+        return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead()); // 将jdk的 SelectableChannel的字节数据读取到netty的ByteBuf中。使用 ByteBuf 来接收 SocketChannel 的数据，并且限制了最大读取的字节数为 attemptedBytesRead
     }
 
     @Override
@@ -376,8 +376,8 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
             ((NioSocketChannelConfig) config).setMaxBytesPerGatheringWrite(attempted >>> 1);
         }
     }
-
-    @Override
+    // OP_WRITE 事件的就绪条件并不是发生在调用 channel 的 write 方法之后，而是在当底层缓冲区有空闲空间的情况下
+    @Override // 【只有当你确实有数据要写时再注册写操作，并在写完以后马上取消注册】
     protected void doWrite(ChannelOutboundBuffer in) throws Exception {
         SocketChannel ch = javaChannel();
         // 有数据要写，且能写入，这最多尝试16次
@@ -428,7 +428,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
                     long attemptedBytes = in.nioBufferSize();
                     final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
                     if (localWrittenBytes <= 0) {
-                        // 缓存区满了，写不进去了，注册写事件
+                        // 缓存区满了，写不进去了，注册写事件，这样当写缓存有空间来继续接受数据时，该写事件就会被触发，我们就可以在 processSelectedKeys() 时继续将没写完的数据继续写出了
                         incompleteWrite(true);
                         return;
                     }
@@ -454,12 +454,12 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         @Override
         protected Executor prepareToClose() {
             try {
-                if (javaChannel().isOpen() && config().getSoLinger() > 0) {
+                if (javaChannel().isOpen() && config().getSoLinger() > 0) { // 设置了 Socket#SO_LINGER 配置项
                     // We need to cancel this key of the channel so we may not end up in a eventloop spin
                     // because we try to read or write until the actual close happens which may be later due
                     // SO_LINGER handling.
                     // See https://github.com/netty/netty/issues/4449
-                    // 需要逗留到数据收发完成或者设置的时间，所以提交到另外的 Executor 中执行
+                    // 需要逗留到数据收发完成或者设置的时间，所以提交到另外的 Executor（即，当前方法返回值） 中执行
                     // 提前 deregister 掉，逗留期不接受新的数据了
                     // deregister 包含 selection key 的 cancel 的原因之一。
                     doDeregister();  // 取消选择键selectionKey

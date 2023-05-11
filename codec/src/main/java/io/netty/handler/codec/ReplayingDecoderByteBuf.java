@@ -36,7 +36,7 @@ import io.netty.util.internal.StringUtil;
 /**
  * Special {@link ByteBuf} implementation which is used by the {@link ReplayingDecoder}
  */
-final class ReplayingDecoderByteBuf extends ByteBuf {
+final class ReplayingDecoderByteBuf extends ByteBuf { // 特殊的ByteBuf实现，它重写了ByteBuf的各种 readXXX、getXXX。这些方法在获取真实的数据前会先判断字节是否足够，如果不足够则会抛出一个Signal异常。
 
     private static final Signal REPLAY = ReplayingDecoder.REPLAY;
 

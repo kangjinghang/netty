@@ -93,13 +93,13 @@ public final class ChannelOutboundBuffer {
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
 
     @SuppressWarnings("UnusedDeclaration") // 统计待发送的字节数。不用AtomicLong -> volatile long + AtomicLongFieldUpdater
-    private volatile long totalPendingSize;
-
+    private volatile long totalPendingSize; // 记录了该ChannelOutboundBuffer中所有带发送Entry对象的占的总内存大小（（除了实例数据），还包括对象头以及对齐填充））和所有待发送数据的大小
+    //
     private static final AtomicIntegerFieldUpdater<ChannelOutboundBuffer> UNWRITABLE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "unwritable");
 
-    @SuppressWarnings("UnusedDeclaration")
-    private volatile int unwritable;
+    @SuppressWarnings("UnusedDeclaration") // 用来标示当前该Channel要发送的数据是否已经超过了设定 or 默认的WriteBufferWaterMark的high值
+    private volatile int unwritable; // 如果当前操作导致了待写出的数据（包括Entry对象大小以及真实需要传输数据的大小）超过了设置写缓冲区的高水位，那么将会触发fireChannelWritabilityChanged事件。
 
     private volatile Runnable fireChannelWritabilityChangedTask;
 
@@ -115,7 +115,7 @@ public final class ChannelOutboundBuffer {
         Entry entry = Entry.newInstance(msg, size, total(msg), promise);   // 创建一个待写出的消息节点
         if (tailEntry == null) {
             flushedEntry = null;
-        } else {
+        } else { // 加入到 tailEntry 中
             Entry tail = tailEntry;
             tail.next = entry;
         }
@@ -126,7 +126,7 @@ public final class ChannelOutboundBuffer {
 
         // increment pending bytes after adding message to the unflushed arrays.
         // See https://github.com/netty/netty/issues/1619
-        incrementPendingOutboundBytes(entry.pendingSize, false);
+        incrementPendingOutboundBytes(entry.pendingSize, false); // 对 totalPendingSize 属性以及 unwritable 字段做调整
     }
 
     /**
@@ -145,7 +145,7 @@ public final class ChannelOutboundBuffer {
                 flushedEntry = entry;
             }
             do {
-                flushed ++;
+                flushed ++; // 通过 flushed 成员属性记录待发送 entries 的个数
                 if (!entry.promise.setUncancellable()) {
                     // Was cancelled so make sure we free up memory and notify about the freed bytes
                     int pending = entry.cancel();
@@ -155,8 +155,8 @@ public final class ChannelOutboundBuffer {
             } while (entry != null);
 
             // All flushed so reset unflushedEntry
-            unflushedEntry = null;
-        }
+            unflushedEntry = null; // 将 unflushedEntry 置为 null，表示没有待发送的 entries
+        } // entry 为null则说明所有的entries已经被flush了，并在此期间没有新的消息被添加进 ChannelOutboundBuffer 中。所有直接返回就好。
     }
 
     /**
@@ -171,8 +171,8 @@ public final class ChannelOutboundBuffer {
         if (size == 0) {
             return;
         }
-
-        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, size);
+        // totalPendingSize 字段记录了该 ChannelOutboundBuffer 中所有带发送 Entry 对象的占的总内存大小和所有带发送数据的大小
+        long newWriteBufferSize = TOTAL_PENDING_SIZE_UPDATER.addAndGet(this, size); // 修改 totalPendingSize 字段的值
         // 判断待发送的数据的 size 是否高于高水位线，超过的话，状态变为不可写状态，用户可以判断是不是可以写，来决定到底要不要写
         if (newWriteBufferSize > channel.config().getWriteBufferHighWaterMark()) {
             setUnwritable(invokeLater);
@@ -603,9 +603,9 @@ public final class ChannelOutboundBuffer {
     private void setUnwritable(boolean invokeLater) {
         for (;;) {
             final int oldValue = unwritable;
-            final int newValue = oldValue | 1;
-            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) {
-                if (oldValue == 0) {
+            final int newValue = oldValue | 1; // unwritable 用来标示当前该Channel要发送的数据是否已经超过了设定 or 默认的WriteBufferWaterMark的high值
+            if (UNWRITABLE_UPDATER.compareAndSet(this, oldValue, newValue)) { // 修改 unwritable 的值
+                if (oldValue == 0) { // 如果当前操作导致了待写出的数据（包括Entry对象大小以及真实需要传输数据的大小）超过了设置写缓冲区的高水位
                     fireChannelWritabilityChanged(invokeLater);
                 }
                 break;
@@ -809,14 +809,14 @@ public final class ChannelOutboundBuffer {
 
         private final Handle<Entry> handle;
         Entry next;
-        Object msg;
+        Object msg; // 原始消息对象的引用
         ByteBuffer[] bufs;
         ByteBuffer buf;
-        ChannelPromise promise; // 消息回调 promise
+        ChannelPromise promise; // 消息回调 promise（用于在完成真是的网络层write后去标识异步操作的完成以及回调已经注册到该promise上的listeners）
         long progress;
-        long total;
-        int pendingSize;
-        int count = -1;
+        long total; // 待发送数据包的总大小（该属性与pendingSize的区别在于，如果是待发送的是FileRegion数据对象，则pengdingSize中只有对象内存的大小，即真实的数据大小被记录为0；但total属性则是会记录FileRegion中数据大小，并且total属性是不包含对象内存大小，仅仅是对数据本身大小的记录
+        int pendingSize; // 记录有该 ByteBuf or ByteBufs 中待发送数据大小 和 对象本身内存大小（除了实例数据），还包括对象头以及对齐填充） 的累加和
+        int count = -1; // 写消息数据个数的记录（如果写消息数据是个数组的话，该值会大于1）
         boolean cancelled;
 
         private Entry(Handle<Entry> handle) {

@@ -64,7 +64,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             SystemPropertyUtil.getBoolean("io.netty.noKeySetOptimization", false);
 
     private static final int MIN_PREMATURE_SELECTOR_RETURNS = 3;
-    private static final int SELECTOR_AUTO_REBUILD_THRESHOLD;
+    private static final int SELECTOR_AUTO_REBUILD_THRESHOLD; // 标识 Selector 空轮询的阈值，当超过这个阈值的话则需要重建 Selector
 
     private final IntSupplier selectNowSupplier = new IntSupplier() {
         @Override
@@ -524,10 +524,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 handleLoopException(t);
             } finally {
                 // Always handle shutdown even if the loop processing threw an exception.
-                try {
-                    if (isShuttingDown()) { // 检测用户是否要终止线程，比如shutdownGracefully
-                        closeAll(); // 关闭注册的channel
-                        if (confirmShutdown()) {
+                try { // 关闭流程放在了单独的 try-catch 中，这是为了和正常的工作流程的 try-catch 能够不会互相影响
+                    if (isShuttingDown()) { // 每次事件循环的最后，检测用户是否要终止线程，即，state >= ST_SHUTTING_DOWN，则会开始处理关闭流程
+                        closeAll(); // 关闭注册的channel，fireChannelInactiveAndDeregister，移除所有 handler
+                        if (confirmShutdown()) { // 为true 说明，超过了最大允许超时时间，
                             return;
                         }
                     }
@@ -591,7 +591,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     @Override
     protected void cleanup() {
         try {
-            selector.close();
+            selector.close(); // 会将当前 NioEventLoo p所关联的 Selector 关闭
         } catch (IOException e) {
             logger.warn("Failed to close a selector.", e);
         }
@@ -707,20 +707,20 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             int readyOps = k.readyOps();
             // We first need to call finishConnect() before try to trigger a read(...) or write(...) as otherwise
             // the NIO JDK channel implementation may throw a NotYetConnectedException.
-            if ((readyOps & SelectionKey.OP_CONNECT) != 0) { // 【客户端】连接事件，NioSocketChannel#connetc()
+            if ((readyOps & SelectionKey.OP_CONNECT) != 0) { //【客户端】：发现连接事件，NioSocketChannel#connect()
                 // remove OP_CONNECT as otherwise Selector.select(..) will always return without blocking
                 // See https://github.com/netty/netty/issues/924
                 int ops = k.interestOps();
-                ops &= ~SelectionKey.OP_CONNECT; // 连接完成后【重新设置】【客户端】感兴趣的事件，除了连接事件（即OP_READ、OP_WRITE）都感兴趣
+                ops &= ~SelectionKey.OP_CONNECT; // 连接事件是只需要处理一次的事件，连接完成后【客户端】【重新设置】感兴趣的事件，除了连接事件（即OP_READ、OP_WRITE）都感兴趣
                 k.interestOps(ops);
 
                 unsafe.finishConnect(); // 完成连接
             }
 
             // Process OP_WRITE first as we may be able to write some queued buffers and so free memory.
-            if ((readyOps & SelectionKey.OP_WRITE) != 0) {
+            if ((readyOps & SelectionKey.OP_WRITE) != 0) { // 说明上次写入的时候缓冲区写满了，然后当时注册了 OP_WRITE 事件，此时，写缓冲区有空间了，要执行 forceFlush 继续发送外发送完的数据
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
-                ch.unsafe().forceFlush(); // 写事件的话就直接 flush
+                ch.unsafe().forceFlush(); // 写事件的话就直接 forceFlush
             }
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
@@ -759,16 +759,16 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
         }
     }
-
+    // 关闭注册的channel
     private void closeAll() {
         selectAgain(); // 这里的目标是为了去除 canceled 的 key
         Set<SelectionKey> keys = selector.keys();
         Collection<AbstractNioChannel> channels = new ArrayList<AbstractNioChannel>(keys.size());
         for (SelectionKey k: keys) {
             Object a = k.attachment();
-            if (a instanceof AbstractNioChannel) {
-                channels.add((AbstractNioChannel) a);
-            } else {
+            if (a instanceof AbstractNioChannel) { // attachment 是一个 AbstractNioChannel 对象
+                channels.add((AbstractNioChannel) a); // 先让放入到 channels 集合中
+            } else { // 否则直接调用 k.cancel()，即 selectionKey.cancel() 操作将这个 SelectableChannel从 Selector 上注销
                 k.cancel();
                 @SuppressWarnings("unchecked")
                 NioTask<SelectableChannel> task = (NioTask<SelectableChannel>) a;
@@ -777,7 +777,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         for (AbstractNioChannel ch: channels) { // 循环关闭 channel
-            ch.unsafe().close(ch.unsafe().voidPromise());
+            ch.unsafe().close(ch.unsafe().voidPromise()); // 委托给 unsafe 关闭
         }
     }
 

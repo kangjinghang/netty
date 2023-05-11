@@ -32,7 +32,7 @@ public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
         private HandleImpl(int unknownSize) {
             this.unknownSize = unknownSize;
         }
-
+        // 估计待发送消息数据的大小，如果是 FileRegion 的话直接返回0，否则返回 ByteBuf 中可读取字节数。
         @Override
         public int size(Object msg) {
             if (msg instanceof ByteBuf) {

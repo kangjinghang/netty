@@ -213,11 +213,11 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             setChannelOptions(child, childOptions, logger); // 设置 childOptions
             setAttributes(child, childAttrs); // 设置 child 属性
 
-            try {
+            try {   // 将配置好的 NioSocketChannel 注册到 childGroup 中，并注册了一个监听器
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
-                        if (!future.isSuccess()) {
+                        if (!future.isSuccess()) { // 如果发现该注册操作失败了，则会强制关闭当前这个 NioSocketChannel
                             forceClose(child, future.cause());
                         }
                     }

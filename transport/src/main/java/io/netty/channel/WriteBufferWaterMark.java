@@ -30,7 +30,7 @@ import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
  * {@link Channel#isWritable()} will start to return
  * {@code true} again.
  */
-public final class WriteBufferWaterMark {
+public final class WriteBufferWaterMark { // 用于设置写缓存的高水位标志和低水位标志
 
     private static final int DEFAULT_LOW_WATER_MARK = 32 * 1024;
     private static final int DEFAULT_HIGH_WATER_MARK = 64 * 1024;

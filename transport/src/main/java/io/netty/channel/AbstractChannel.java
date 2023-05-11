@@ -444,7 +444,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             if (recvHandle == null) {
                 recvHandle = config().getRecvByteBufAllocator().newHandle();
             }
-            return recvHandle;
+            return recvHandle; // recvHandle 不存在则创建一个 AdaptiveRecvByteBufAllocator.HandleImpl 实例，然后返回；否则直接返回。
         }
 
         @Override
@@ -704,12 +704,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 if (closeFuture.isDone()) { // 已经关闭，保证底层close只执行一次
                     // Closed already.
                     safeSetSuccess(promise);
-                } else if (!(promise instanceof VoidChannelPromise)) { // Only needed if no VoidChannelPromise.
+                } else if (!(promise instanceof VoidChannelPromise)) { // 还没关闭完成。Only needed if no VoidChannelPromise.
                     // This means close() was called before so we just register a listener and return
-                    closeFuture.addListener(new ChannelFutureListener() {
+                    closeFuture.addListener(new ChannelFutureListener() { // 给 closeFuture 增加回调，即，设置 promise.setSuccess()
                         @Override
                         public void operationComplete(ChannelFuture future) throws Exception {
-                            promise.setSuccess(); // 当Channel关闭时，将此次close异步请求结果也设置为成功
+                            promise.setSuccess(); // 当 Channel 关闭时，将此次close异步请求结果也设置为成功
                         }
                     });
                 }
@@ -722,40 +722,40 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             // 不接受消息。outboundBuffer作为一个标记，为空表示Channel正在关闭
                 this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
-            Executor closeExecutor = prepareToClose();
-            if (closeExecutor != null) {
+            Executor closeExecutor = prepareToClose(); // 【重点】，子类（NioSocketChannel）可重写，返回 closeExecutor
+            if (closeExecutor != null) { // 设置了Socket#SO_LINGER 配置项，close() 操作作为一个任务放到 closeExecutor 执行器去执行，说不在当前的 NioEventLoop 的线程
                 closeExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
                         try {
                             // Execute the close. prepareToClose返回的executor执行
-                            // 走到这，说明solinger（单位：秒）设置了，Close会阻塞一定时间/或数据处理完毕再关闭
+                            // 走到这，说明solinger（单位：秒）设置了，Close会阻塞一定时间（ l_linger time）/或数据处理完毕再关闭
                             doClose0(promise);
-                        } finally {
+                        } finally { // 继续在  NioEventLoop 线程执行
                             // Call invokeLater so closeAndDeregister is executed in the EventLoop again!
                             invokeLater(new Runnable() {
                                 @Override
-                                public void run() { // Channel注册的EventLoop执行
+                                public void run() { // Channel注册的EventLoop执行，说明 outboundBuffer 在 l_linger 内没有 flush 发送完
                                     if (outboundBuffer != null) {
                                         // Fail all the queued messages. 写缓冲队列中的数据全部设置失败
                                         outboundBuffer.failFlushed(cause, notify); // 移除flushedEntry指针之后的所有Entry
                                         outboundBuffer.close(closeCause);
                                     }
-                                    fireChannelInactiveAndDeregister(wasActive);
+                                    fireChannelInactiveAndDeregister(wasActive); // 触发 InactiveAndDeregister 事件
                                 }
                             });
                         }
                     }
                 });
-            } else { // 当前调用线程执行
+            } else { // 调用当前 NioEventLoop 线程执行
                 try {
                     // Close the channel and fail the queued messages in all cases.
                     doClose0(promise);
                 } finally {
-                    if (outboundBuffer != null) {
+                    if (outboundBuffer != null) { // 将 outboundBuffer 中所有还未发送出去的消息标志为操作失败 fail flush
                         // Fail all the queued messages.
-                        outboundBuffer.failFlushed(cause, notify);
-                        outboundBuffer.close(closeCause);
+                        outboundBuffer.failFlushed(cause, notify); // 关闭 outboundBuffer
+                        outboundBuffer.close(closeCause); // 释放相关资源
                     }
                 }
                 if (inFlush0) {
@@ -766,11 +766,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         }
                     });
                 } else {
-                    fireChannelInactiveAndDeregister(wasActive);
+                    fireChannelInactiveAndDeregister(wasActive); // 触发 channelInactive 事件和 channelUnregistered 事件
                 }
             }
         }
-
+        // 关闭 channel，可能在 NioEventLoop 被调用，也可能是其他的 Executor 线程
         private void doClose0(ChannelPromise promise) {
             try {
                 doClose(); // 模板方法，细节由子类实现
@@ -840,7 +840,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         // if it was registered.
                         if (registered) {
                             registered = false;
-                            pipeline.fireChannelUnregistered(); // channelUnregistered，首次调用触发Unregistered事件
+                            pipeline.fireChannelUnregistered(); // channelUnregistered，首次调用触发Unregistered事件。headContext 处理时调用 destroy()
                         }
                         safeSetSuccess(promise);
                     }
@@ -901,7 +901,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 }
                 return;
             }
-            // 4.消息放到 buf 里面
+            // 4.将消息加入outboundBuffer中等待发送
             outboundBuffer.addMessage(msg, size, promise);
         }
 
@@ -915,7 +915,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             outboundBuffer.addFlush(); // 添加一个标记
-            flush0();
+            flush0(); // 不断自旋，写到 jdk channel 中去
         }
 
         @SuppressWarnings("deprecation")
@@ -937,9 +937,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 try {
                     // Check if we need to generate the exception at all.
                     if (!outboundBuffer.isEmpty()) {
-                        if (isOpen()) {
+                        if (isOpen()) { // NioSocketChannel还是open的，则失败的原始，失败的原因是 NotYetConnectedException，然后 fireChannelWritabilityChanged
                             outboundBuffer.failFlushed(new NotYetConnectedException(), true);
-                        } else {
+                        } else { // 如果 NioSocketChannel 已经关闭了，失败的原因是 ClosedChannelException
                             // Do not trigger channelWritabilityChanged because the channel is closed already.
                             outboundBuffer.failFlushed(newClosedChannelException(initialCloseCause, "flush0()"), false);
                         }
@@ -951,7 +951,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             }
 
             try {
-                doWrite(outboundBuffer); // 核心方法，委托给AbstractNioByteChannel执行。模板方法，细节由子类实现
+                doWrite(outboundBuffer); // 核心方法，委托给AbstractNioByteChannel执行。模板方法，细节由子类实现，Channel 输出缓冲区中的数据通过 socket 传输给对端
             } catch (Throwable t) {
                 handleWriteError(t);
             } finally {

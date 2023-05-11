@@ -839,9 +839,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     private void destroyUp(AbstractChannelHandlerContext ctx, boolean inEventLoop) {
         final Thread currentThread = Thread.currentThread();
         final AbstractChannelHandlerContext tail = this.tail;
-        for (;;) {
+        for (;;) { // 删除 ChannelPipeline 中的所有的 handler(除了head、tail之外)
             if (ctx == tail) {
-                destroyDown(currentThread, tail.prev, inEventLoop);
+                destroyDown(currentThread, tail.prev, inEventLoop); // 触发每个 Handler 的 handlerRemoved() 方法
                 break;
             }
 
@@ -861,7 +861,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             inEventLoop = false; // 每次都悲观的认为下一个Handler的处理线程会是另外一个线程
         }
     }
-
+    // 触发 handlerRemoved() 方法
     private void destroyDown(Thread currentThread, AbstractChannelHandlerContext ctx, boolean inEventLoop) {
         // We have reached at tail; now traverse backwards.
         final AbstractChannelHandlerContext head = this.head; // 至此，已经到达双向链表尾部，可确定入站事件已在删除操作进行之前传播完毕
@@ -1193,7 +1193,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      * to call {@link ReferenceCountUtil#release(Object)} on the given msg at some point.
      */
     protected void onUnhandledInboundMessage(ChannelHandlerContext ctx, Object msg) {
-        onUnhandledInboundMessage(msg);
+        onUnhandledInboundMessage(msg); // 通过 ReferenceCountUtil.release(msg); 释放 msg
         if (logger.isDebugEnabled()) { // 发现字节数据(ByteBuf)或者decoder之后的业务对象在pipeline流转过程中没有被消费，落到tail节点，tail节点就会给你发出一个警告，告诉你，将未处理的数据给丢掉了
             logger.debug("Discarded message pipeline : {}. Channel : {}.",
                          ctx.pipeline().names(), ctx.channel());
@@ -1393,12 +1393,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
                 destroy();
             }
         }
-
+        // AbstractNioChannel.java 第305行 pipeline().fireChannelActive(); 触发
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
             ctx.fireChannelActive(); // 继续传播 ChannelActive 事件
             // 注册读事件：读包括：创建连接/读数据。开启自动读的话，这时可以读数据了
-            readIfIsAutoRead(); // socket连接时触发入站事件channelActive，然后向自身发出read()请求  // 自动读取
+            readIfIsAutoRead(); // socket 连接时 CONNECT事件处理后再触发入站事件 channelActive，然后向自身发出read()请求  // 自动读取
         }
 
         @Override
@@ -1420,7 +1420,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         private void readIfIsAutoRead() {
             if (channel.config().isAutoRead()) { // 默认情况下，Channel都是默认开启自动读取模式的，即只要Channel是active的，读完一波数据之后就继续向selector注册读事件，这样就可以连续不断得读取数据
-                channel.read(); // 执行 channel read 方法
+                channel.read(); // 将触发一个 read 事件在 ChannelPipeline 中传播，而 read 是一个出站操作，它会从 tail 开始传播至 head。下面就要看 head 对 read 事件的处理
             }
         }
 

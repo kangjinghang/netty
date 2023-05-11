@@ -211,7 +211,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     protected abstract class AbstractNioUnsafe extends AbstractUnsafe implements NioUnsafe {
 
-        protected final void removeReadOp() {
+        protected final void removeReadOp() { // 将 OP_READ 从 SelectionKey 的 interestOps 集合中移除
             SelectionKey key = selectionKey();
             // Check first if the key is still valid as it may be canceled as part of the deregistration
             // from the EventLoop
@@ -287,27 +287,27 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         }
 
         private void fulfillConnectPromise(ChannelPromise promise, boolean wasActive) {
-            if (promise == null) { // 操作已取消或Promise已被通知？
+            if (promise == null) { // 当异步的“连接尝试”操作通过取消来关闭了，那么则直接返回。因为当“连接尝试”操作被取消时，connectPromise 会被置为 null。
                 // Closed via cancellation and the promise has been notified already.
                 return;
             }
 
             // Get the state as trySuccess() may trigger an ChannelFutureListener that will close the Channel.
             // We still need to ensure we call fireChannelActive() in this case.
-            boolean active = isActive();
-
+            boolean active = isActive(); // 获取当前 SocketChannel 的状态，因为此时SocketChannel.finishConnect() 已经被调用过了，因此该方法会返回true
+            // 尝试将当前的异步的“连接尝试”操作标记为成功。如果用户取消了“连接尝试，那么返回 false，否则返回true。并且如果有 ChannelFutureListener 注册到了这个 promise 上，那么监听器的 operationComplete 方法将被回调
             // trySuccess() will return false if a user cancelled the connection attempt.
-            boolean promiseSet = promise.trySuccess();  // False表示用户取消操作
+            boolean promiseSet = promise.trySuccess();  // False表示用户调用connect操作后，用户调用了cancel来取消该操作
 
             // Regardless if the connection attempt was cancelled, channelActive() event should be triggered,
             // because what happened is what happened.
             if (!wasActive && active) { // 此时用户没有取消Connect操作
-                pipeline().fireChannelActive(); // 触发Active事件
+                pipeline().fireChannelActive(); // 触发【入站】ChannelActive 事件
             }
 
             // If a user cancelled the connection attempt, close the channel, which is followed by channelInactive().
             if (!promiseSet) {
-                close(voidPromise()); // 操作已被用户取消，关闭Channel
+                close(voidPromise()); // 操作已被用户取消，关闭Channel，并触发 channelInactive 事件
             }
         }
 
@@ -321,7 +321,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             promise.tryFailure(cause);
             closeIfClosed();
         }
-
+        // 注意，当连接操作既没有被取消也没有超时的情况下，该方法才会被 EventLoop 调用。
         @Override
         public final void finishConnect() {
             // Note this method is invoked by the event loop only if the connection attempt was
@@ -330,18 +330,20 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             assert eventLoop().inEventLoop();
 
             try {
-                boolean wasActive = isActive();
-                doFinishConnect(); // 模板方法
+                boolean wasActive = isActive(); // 因为此时 SocketChannel.finishConnect() 还没调用，所以 ch.isConnected() 将返回 false，因此 isActive() 的结果为 false。
+                doFinishConnect(); // 模板方法，该方法会调用 SocketChannel.finishConnect() 来标识连接的完成
                 fulfillConnectPromise(connectPromise, wasActive); // 首次Active触发Active事件
             } catch (Throwable t) {
                 fulfillConnectPromise(connectPromise, annotateConnectException(t, requestedRemoteAddress));
             } finally {
                 // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
                 // See https://github.com/netty/netty/issues/1770
-                if (connectTimeoutFuture != null) {
-                    connectTimeoutFuture.cancel(false); // 连接完成，取消超时检测任务
+                if (connectTimeoutFuture != null) { // 员变量 connectTimeoutFuture 非空，则说明该“连接尝试”操作设置了一个连接超时时间
+                    connectTimeoutFuture.cancel(false); // 因为此时连接已经完成了，我们就可以取消超时检测任务了
                 }
-                connectPromise = null;
+                // 当程序执行完 fulfillConnectPromise方法中的 promise.trySuccess() 之后，以及在执行finally代码块之前，“连接尝试”的已经完成，并且 ChannelPromise 已标记为了true。
+                // 但是此时设置的连接超时时间恰好到了并且连接超时任务（还没等到 connectTimeoutFuture#cancel(false) 操作，connectTimeoutFuture 就触发了）已被执行，此时超时任务发现 ChannelPromise 的状态已经被标识过了 null 也就不会进行关闭channel的操作
+                connectPromise = null; //
             }
         }
 
@@ -350,7 +352,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             // Flush immediately only when there's no pending flush.
             // If there's a pending flush operation, event loop will call forceFlush() later,
             // and thus there's no need to call it now.
-            if (!isFlushPending()) {
+            if (!isFlushPending()) { // 来判断 flush 操作是否需要被挂起
                 super.flush0();
             }
         }
@@ -360,10 +362,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             // directly call super.flush0() to force a flush now
             super.flush0();
         }
-
+        // 来判断flush操作是否需要被挂起。当写缓冲区已经满了，返回 true，等写缓冲区有空间时，SelectionKey.OP_WRITE 事件就会被触发，到时 NioEventLoop 的事件循环就会调用 forceFlush() 方法来继续将为写出的数据写出
         private boolean isFlushPending() {
-            SelectionKey selectionKey = selectionKey();
-            return selectionKey.isValid() && (selectionKey.interestOps() & SelectionKey.OP_WRITE) != 0;
+            SelectionKey selectionKey = selectionKey();// 判断当前 NioSocketChannel 的 SelectionKey.OP_WRITE 事件是否有被注册到对应的 Selector 上
+            return selectionKey.isValid() && (selectionKey.interestOps() & SelectionKey.OP_WRITE) != 0; // 如果有，则说明当前写缓冲区已经满了，返回 true
         }
     }
 
