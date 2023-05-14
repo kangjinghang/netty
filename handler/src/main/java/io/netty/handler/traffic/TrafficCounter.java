@@ -36,7 +36,7 @@ import static io.netty.util.internal.ObjectUtil.checkNotNullWithIAE;
  * receive or write operation.
  * </p>
  */
-public class TrafficCounter {
+public class TrafficCounter { // 对读和写的字节进行计数以用于限制流量
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(TrafficCounter.class);
 
@@ -486,7 +486,7 @@ public class TrafficCounter {
      *            the max time in ms to wait in case of excess of traffic.
      * @param now the current time
      * @return the current time to wait (in ms) if needed for Read operation.
-     */
+     */ // 根据数据的大小、设定的readLimit、最大延迟时间等计算得到下一次开启读操作需要的延迟时间（距当前时间而言）wait(毫秒)
     public long readTimeToWait(final long size, final long limitTraffic, final long maxTime, final long now) {
         bytesRecvFlowControl(size);
         if (size == 0 || limitTraffic == 0) {

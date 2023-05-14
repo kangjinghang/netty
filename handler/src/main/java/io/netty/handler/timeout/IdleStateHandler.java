@@ -108,7 +108,7 @@ public class IdleStateHandler extends ChannelDuplexHandler {
         }
     };
 
-    private final boolean observeOutput;
+    private final boolean observeOutput; // 判断是否有"写的意图"，而不是判断"是否写成功"
     private final long readerIdleTimeNanos; // 用户配置的读超时时间
     private final long writerIdleTimeNanos;
     private final long allIdleTimeNanos;
@@ -426,8 +426,8 @@ public class IdleStateHandler extends ChannelDuplexHandler {
             // that there's change happening on byte level. If the user doesn't observe channel
             // writability events then they'll eventually OOME and there's clearly a different
             // problem and idleness is least of their concerns.
-            if (lastChangeCheckTimeStamp != lastWriteTime) {
-                lastChangeCheckTimeStamp = lastWriteTime;
+            if (lastChangeCheckTimeStamp != lastWriteTime) { // IdelStateHandler 是可以在非EventLoop现实上执行的，也就是说写空闲超时任务是可以在非EventLoop线程上执行
+                lastChangeCheckTimeStamp = lastWriteTime; // 而 listener 只会在NioEventLoop线程上执行，lastWriteTime 则只能被 NioEventLoop线程修改
 
                 // But this applies only if it's the non-first call.
                 if (!first) {
@@ -441,13 +441,13 @@ public class IdleStateHandler extends ChannelDuplexHandler {
 
             if (buf != null) {
                 int messageHashCode = System.identityHashCode(buf.current());
-                long pendingWriteBytes = buf.totalPendingWriteBytes();
+                long pendingWriteBytes = buf.totalPendingWriteBytes(); // 每次添加一个 ByteBuf 的时候就会增加 totalPendingSize 字段的值
                 // 待发送的字节数 != 上一次待发送的字节数，说明肯定是在"动"，是有进度的
                 if (messageHashCode != lastMessageHashCode || pendingWriteBytes != lastPendingWriteBytes) {
                     lastMessageHashCode = messageHashCode;
                     lastPendingWriteBytes = pendingWriteBytes;
 
-                    if (!first) {
+                    if (!first) { // 写超时已不是第一次触发
                         return true;
                     }
                 }
@@ -542,7 +542,7 @@ public class IdleStateHandler extends ChannelDuplexHandler {
                 firstWriterIdleEvent = false;
 
                 try {
-                    if (hasOutputChanged(ctx, first)) {
+                    if (hasOutputChanged(ctx, first)) { // true，说明有"写的意图"，当然，不一定是"是否写成功"
                         return;
                     }
 

@@ -91,7 +91,7 @@ public final class ChannelOutboundBuffer {
 
     private static final AtomicLongFieldUpdater<ChannelOutboundBuffer> TOTAL_PENDING_SIZE_UPDATER =
             AtomicLongFieldUpdater.newUpdater(ChannelOutboundBuffer.class, "totalPendingSize");
-
+    // 每次添加一个 ByteBuf 的时候就会增加 totalPendingSize 字段的值，每次 flush 后，减少totalPendingSize的值
     @SuppressWarnings("UnusedDeclaration") // 统计待发送的字节数。不用AtomicLong -> volatile long + AtomicLongFieldUpdater
     private volatile long totalPendingSize; // 记录了该ChannelOutboundBuffer中所有带发送Entry对象的占的总内存大小（（除了实例数据），还包括对象头以及对齐填充））和所有待发送数据的大小
     //
@@ -149,7 +149,7 @@ public final class ChannelOutboundBuffer {
                 if (!entry.promise.setUncancellable()) {
                     // Was cancelled so make sure we free up memory and notify about the freed bytes
                     int pending = entry.cancel();
-                    decrementPendingOutboundBytes(pending, false, true);
+                    decrementPendingOutboundBytes(pending, false, true); // // 每次 flush 后，减少 totalPendingSize 的值，其中参数 size 为当前发送出去的 ByteBuf 的数据大小
                 }
                 entry = entry.next;
             } while (entry != null);
@@ -166,7 +166,7 @@ public final class ChannelOutboundBuffer {
     void incrementPendingOutboundBytes(long size) {
         incrementPendingOutboundBytes(size, true);
     }
-
+    // 每次往 ChannelOutboundBuffer 添加一个 ByteBuf 的时候就会增加 totalPendingSize 字段的值
     private void incrementPendingOutboundBytes(long size, boolean invokeLater) {
         if (size == 0) {
             return;
@@ -182,11 +182,11 @@ public final class ChannelOutboundBuffer {
     /**
      * Decrement the pending bytes which will be written at some point.
      * This method is thread-safe!
-     */
+     */ // 每次 flush 后，减少 totalPendingSize 的值，其中参数 size 为当前发送出去的 ByteBuf 的数据大小
     void decrementPendingOutboundBytes(long size) {
         decrementPendingOutboundBytes(size, true, true);
     }
-
+    // 每次 flush 后，减少 totalPendingSize 的值，其中参数 size 为当前发送出去的 ByteBuf 的数据大小
     private void decrementPendingOutboundBytes(long size, boolean invokeLater, boolean notifyWritability) {
         if (size == 0) {
             return;
@@ -530,7 +530,7 @@ public final class ChannelOutboundBuffer {
      * {@code false}.
      */
     public boolean isWritable() {
-        return unwritable == 0;
+        return unwritable == 0; // unwritable 可以看做是一个二进制的开关属性值。它的二进制的不同位表示的不同状态的开关
     }
 
     /**

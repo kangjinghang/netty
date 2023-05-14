@@ -67,11 +67,11 @@ import java.util.Queue;
  * transfer.  To resume the transfer when a new chunk is available, you have to
  * call {@link #resumeTransfer()}.
  */
-public class ChunkedWriteHandler extends ChannelDuplexHandler {
+public class ChunkedWriteHandler extends ChannelDuplexHandler { // 用于支持异步写大数据流并且不需要消耗大量内存也不会导致内存溢出错误(OutOfMemoryError)
 
     private static final InternalLogger logger =
         InternalLoggerFactory.getInstance(ChunkedWriteHandler.class);
-
+    // 待发送的数据包消息队列
     private final Queue<PendingWrite> queue = new ArrayDeque<PendingWrite>();
     private volatile ChannelHandlerContext ctx;
 
@@ -123,7 +123,7 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-        queue.add(new PendingWrite(msg, promise));
+        queue.add(new PendingWrite(msg, promise)); // write的数据包在经过 ChunkedWriteHandler 的时候，会先被存储到这个队列中，并不会立即放入到 ChannelOutboundBuffer
     }
 
     @Override
@@ -139,7 +139,7 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
 
     @Override
     public void channelWritabilityChanged(ChannelHandlerContext ctx) throws Exception {
-        if (ctx.channel().isWritable()) {
+        if (ctx.channel().isWritable()) { // 写缓冲区又有空间了，小于了低水位标志，继续执行 flush
             // channel is writable again try to continue flushing
             doFlush(ctx);
         }
@@ -187,7 +187,7 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
             }
         }
     }
-
+    // 依次取出消息队列中的大数据包，然后拆分成一个个小数据包(ByteBuf)后发给下游的ChannelOutboundHandler，并且在每次发送完一个ByteBuf包后都会立即执行依次ctx.flush()操作将该ByteBuf发送到网络中。
     private void doFlush(final ChannelHandlerContext ctx) {
         final Channel channel = ctx.channel();
         if (!channel.isActive()) {
@@ -198,7 +198,7 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
         boolean requiresFlush = true;
         ByteBufAllocator allocator = ctx.alloc();
         while (channel.isWritable()) {
-            final PendingWrite currentWrite = queue.peek();
+            final PendingWrite currentWrite = queue.peek(); // 依次取出消息队列中的大数据包
 
             if (currentWrite == null) {
                 break;
@@ -220,13 +220,13 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
 
             final Object pendingMessage = currentWrite.msg;
 
-            if (pendingMessage instanceof ChunkedInput) {
+            if (pendingMessage instanceof ChunkedInput) { // 仅支持ChunkedInput类型的消息。也就是说，仅当消息类型是ChunkedInput时才能实现ChunkedWriteHandler提供的大数据包传输功能（ChunkedInput是一个不确定长度的数据流）
                 final ChunkedInput<?> chunks = (ChunkedInput<?>) pendingMessage;
                 boolean endOfInput;
                 boolean suspend;
                 Object message = null;
                 try {
-                    message = chunks.readChunk(allocator);
+                    message = chunks.readChunk(allocator); // 大数据包拆分成一个个小数据包(ByteBuf)后发给下游的ChannelOutboundHandler
                     endOfInput = chunks.isEndOfInput();
 
                     if (message == null) {
@@ -266,10 +266,10 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
                     queue.remove();
                 }
                 // Flush each chunk to conserve memory
-                ChannelFuture f = ctx.writeAndFlush(message);
+                ChannelFuture f = ctx.writeAndFlush(message); // 为每个发送的小数据包注册一个 listener
                 if (endOfInput) {
                     if (f.isDone()) {
-                        handleEndOfInputFuture(f, currentWrite);
+                        handleEndOfInputFuture(f, currentWrite); // 所有小数据包成功发送完成后调用原始大数据包的 GenericProgressiveFutureListener
                     } else {
                         // Register a listener which will close the input once the write is complete.
                         // This is needed because the Chunk may have some resource bound that can not
@@ -310,16 +310,16 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
         }
 
         if (requiresFlush) {
-            ctx.flush();
+            ctx.flush(); // 每次发送完一个 ByteBuf 包后都会立即执行依次 ctx.flush() 操作将该 ByteBuf 发送到网络中
         }
     }
-
+    // 小数据包成功发送完成后调用原始大数据包的 GenericProgressiveFutureListener
     private static void handleEndOfInputFuture(ChannelFuture future, PendingWrite currentWrite) {
         ChunkedInput<?> input = (ChunkedInput<?>) currentWrite.msg;
         if (!future.isSuccess()) {
             closeInput(input);
             currentWrite.fail(future.cause());
-        } else {
+        } else { // 小数据包成功发送完成后调用原始大数据包的 GenericProgressiveFutureListener
             // read state of the input in local variables before closing it
             long inputProgress = input.progress();
             long inputLength = input.length();
@@ -351,7 +351,7 @@ public class ChunkedWriteHandler extends ChannelDuplexHandler {
             }
         }
     }
-
+    // 封装了待发送的消息以及异步写操作的 promise
     private static final class PendingWrite {
         final Object msg;
         final ChannelPromise promise;

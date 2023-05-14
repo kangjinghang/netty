@@ -41,8 +41,8 @@ import static io.netty.util.internal.ObjectUtil.checkPositive;
  * <li><tt>configure</tt> allows you to change read or write limits, or the checkInterval</li>
  * <li><tt>getTrafficCounter</tt> allows you to have access to the TrafficCounter and so to stop
  * or start the monitoring, to change the checkInterval directly, or to have access to its values.</li>
- * </ul>
- */
+ * </ul> // 它允许你使用 TrafficCounter 来实现几乎实时的带宽监控，TrafficCounter 会在每个检测间期（checkInterval）调用这个处理器的doAccounting 方法
+ */ // AbstractTrafficShapingHandler 允许限制全局的带宽（见GlobalTrafficShapingHandler）或者每个 session 的带宽（见ChannelTrafficShapingHandler）作为流量整形
 public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractTrafficShapingHandler.class);
@@ -243,7 +243,7 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
      *
      * @param newWriteLimit The new write limit (in bytes)
      * @param newReadLimit The new read limit (in bytes)
-     */
+     */ // 配置新的写限制、读限制、检测间期。该方法会尽最大努力进行此更改，这意味着已经被延迟进行的流量将不会使用新的配置，它仅用于新的流量中
     public void configure(long newWriteLimit, long newReadLimit) {
         writeLimit = newWriteLimit;
         readLimit = newReadLimit;
@@ -417,31 +417,31 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
         public void run() {
             Channel channel = ctx.channel();
             ChannelConfig config = channel.config();
-            if (!config.isAutoRead() && isHandlerActive(ctx)) {
+            if (!config.isAutoRead() && isHandlerActive(ctx)) { // 如果 Channel的autoRead 为 false，并且 AbstractTrafficShapingHandler 的 READ_SUSPENDED 属性设置为 null 或 false
                 // If AutoRead is False and Active is True, user make a direct setAutoRead(false)
                 // Then Just reset the status
                 if (logger.isDebugEnabled()) {
                     logger.debug("Not unsuspend: " + config.isAutoRead() + ':' +
                             isHandlerActive(ctx));
                 }
-                channel.attr(READ_SUSPENDED).set(false);
+                channel.attr(READ_SUSPENDED).set(false); // 直接将 Channel 的 READ_SUSPENDED 属性设置为 false
             } else {
                 // Anything else allows the handler to reset the AutoRead
                 if (logger.isDebugEnabled()) {
-                    if (config.isAutoRead() && !isHandlerActive(ctx)) {
+                    if (config.isAutoRead() && !isHandlerActive(ctx)) { // Channel 的 autoRead 为 true &&  AbstractTrafficShapingHandler 的 READ_SUSPENDED 属性设置为true
                         if (logger.isDebugEnabled()) {
                             logger.debug("Unsuspend: " + config.isAutoRead() + ':' +
                                     isHandlerActive(ctx));
                         }
-                    } else {
+                    } else {  // Channel 的 autoRead 为 true || AbstractTrafficShapingHandler 的 READ_SUSPENDED 属性设置为true
                         if (logger.isDebugEnabled()) {
                             logger.debug("Normal unsuspend: " + config.isAutoRead() + ':'
                                     + isHandlerActive(ctx));
                         }
                     }
                 }
-                channel.attr(READ_SUSPENDED).set(false);
-                config.setAutoRead(true); // 核心，恢复读
+                channel.attr(READ_SUSPENDED).set(false); // 将 READ_SUSPENDED 属性设置为false
+                config.setAutoRead(true); // 核心，恢复读，（该操作底层会将该Channel的OP_READ事件重新注册为感兴趣的事件，这样Selector就会监听该Channel的读就绪事件了）
                 channel.read();
             }
             if (logger.isDebugEnabled()) {
@@ -467,8 +467,8 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
         long now = TrafficCounter.milliSecondFromNano();
         if (size > 0) { // 当数据不是 ByteBuf 时，size 计算出是-1，所以不会走到流量整形里面，所以 handler 的位置很重要
             // compute the number of ms to wait before reopening the channel
-            long wait = trafficCounter.readTimeToWait(size, readLimit, maxTime, now);
-            wait = checkWaitReadTime(ctx, wait, now);
+            long wait = trafficCounter.readTimeToWait(size, readLimit, maxTime, now); // 根据数据的大小、设定的readLimit、最大延迟时间等计算得到下一次开启读操作需要的延迟时间（距当前时间而言）wait(毫秒)
+            wait = checkWaitReadTime(ctx, wait, now); // 只有当计算出的下一次读操作的时间大于了MINIMAL_WAIT(10毫秒)，并且当前Channel是自动读取的，且“读操作”处于“开启”状态时，才会去暂停读操作
             if (wait >= MINIMAL_WAIT) { // At least 10ms seems a minimal，如果小于最小等待时间，就意义不大了
                 // time in order to try to limit the traffic
                 // Only AutoRead AND HandlerActive True means Context Active
@@ -478,9 +478,9 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
                     logger.debug("Read suspend: " + wait + ':' + config.isAutoRead() + ':'
                             + isHandlerActive(ctx));
                 }
-                if (config.isAutoRead() && isHandlerActive(ctx)) {
-                    config.setAutoRead(false); // 设置 autoRead 标记，并且移除"读"兴趣
-                    channel.attr(READ_SUSPENDED).set(true);
+                if (config.isAutoRead() && isHandlerActive(ctx)) { // 当前Channel为自动读取 && 当前的READ_SUSPENDED标识为null或false（即，读操作未被暂停）
+                    config.setAutoRead(false); // 设置 autoRead 标记，（该操作底层会将该Channel的OP_READ事件从感兴趣的事件中移除，这样Selector就不会监听该Channel的读就绪事件了）
+                    channel.attr(READ_SUSPENDED).set(true); // 将READ_SUSPENDED标识为true（说明，接下来的读操作会被暂停）
                     // Create a Runnable to reactive the read if needed. If one was create before it will just be
                     // reused to limit object creation
                     Attribute<Runnable> attr = channel.attr(REOPEN_TASK);
@@ -499,7 +499,7 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
             }
         }
         informReadOperation(ctx, now);
-        ctx.fireChannelRead(msg);
+        ctx.fireChannelRead(msg); // 将当前的消息发送给 ChannelPipeline 中的下一个 ChannelInboundHandler
     }
 
     @Override
@@ -547,17 +547,17 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
     @Override
     public void write(final ChannelHandlerContext ctx, final Object msg, final ChannelPromise promise)
             throws Exception {
-        long size = calculateSize(msg);
+        long size = calculateSize(msg); // 如果 TS 的handler 放错了位置，接收的不是 ByteBuf 之类的，则直接跳过了
         long now = TrafficCounter.milliSecondFromNano();
         if (size > 0) { // 需要"写"暂停
             // compute the number of ms to wait before continue with the channel
-            long wait = trafficCounter.writeTimeToWait(size, writeLimit, maxTime, now);
-            if (wait >= MINIMAL_WAIT) {
+            long wait = trafficCounter.writeTimeToWait(size, writeLimit, maxTime, now);  // 根据数据的大小、设定的readLimit、最大延迟时间等计算得到下一次开启读操作需要的延迟时间（距当前时间而言）wait(毫秒)
+            if (wait >= MINIMAL_WAIT) { // >= 10ms
                 if (logger.isDebugEnabled()) {
                     logger.debug("Write suspend: " + wait + ':' + ctx.channel().config().isAutoRead() + ':'
                             + isHandlerActive(ctx));
                 }
-                submitWrite(ctx, msg, size, wait, now, promise);
+                submitWrite(ctx, msg, size, wait, now, promise); // 抽象方法，子类重写
                 return;
             }
         }
@@ -580,11 +580,11 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
         setUserDefinedWritability(ctx, true);
         super.channelRegistered(ctx);
     }
-
+    // 将 ChannelOutboundBuffer 中的 unwritable 属性值的相应标志位置位（unwritable关系到isWritable方法是否会返回true。以及会在unwritable从0到非0间变化时触发ChannelWritabilityChanged事件）
     void setUserDefinedWritability(ChannelHandlerContext ctx, boolean writable) {
         ChannelOutboundBuffer cob = ctx.channel().unsafe().outboundBuffer();
         if (cob != null) {
-            cob.setUserDefinedWritability(userDefinedWritabilityIndex, writable);
+            cob.setUserDefinedWritability(userDefinedWritabilityIndex, writable); // 将 ChannelOutboundBuffer 中的 unwritable 属性值的相应标志位置位，触发 ChannelWritabilityChanged 事件
         }
     }
 
@@ -597,15 +597,15 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
     void checkWriteSuspend(ChannelHandlerContext ctx, long delay, long queueSize) {
         // 可能会 OOM 了，或者需要"等待"的时间长了，就不建议再写了。
         // 类似景点，发现排队时间过长，或者人满为患了，这时候发出公告，不建议大家再进来了
-        if (queueSize > maxWriteSize || delay > maxWriteDelay) {
+        if (queueSize > maxWriteSize || delay > maxWriteDelay) { // 检查单个 Channel 待发送的数据包是否超过了 maxWriteSize（默认4M），或者延迟时间是否超过了 maxWriteDelay（默认4s）
             setUserDefinedWritability(ctx, false);
         }
     }
     /**
      * Explicitly release the Write suspended status.
      */
-    void releaseWriteSuspended(ChannelHandlerContext ctx) {
-        setUserDefinedWritability(ctx, true);
+    void releaseWriteSuspended(ChannelHandlerContext ctx) { // 来释放写暂停
+        setUserDefinedWritability(ctx, true); // 方法底层会将 ChannelOutboundBuffer 中的 unwritable 属性值相应的标志位重置
     }
 
     /**
@@ -641,7 +641,7 @@ public abstract class AbstractTrafficShapingHandler extends ChannelDuplexHandler
      * @param msg the msg for which the size should be calculated.
      * @return size the size of the msg or {@code -1} if unknown.
      */
-    protected long calculateSize(Object msg) {
+    protected long calculateSize(Object msg) { // 计算本次读取到的消息的字节数，不是 ByteBuf 之类的，返回-1
         if (msg instanceof ByteBuf) {
             return ((ByteBuf) msg).readableBytes();
         }

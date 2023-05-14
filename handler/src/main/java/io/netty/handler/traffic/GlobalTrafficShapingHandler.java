@@ -75,11 +75,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * Be sure to call {@link #release()} once this handler is not needed anymore to release all internal resources.
  * This will not shutdown the {@link EventExecutor} as it may be shared, so you need to do this by your own.
  */
-@Sharable
-public class GlobalTrafficShapingHandler extends AbstractTrafficShapingHandler {
+@Sharable // 注意 OutboundBuffer.setUserDefinedWritability(index, boolean) 中索引使用 "2"。
+public class GlobalTrafficShapingHandler extends AbstractTrafficShapingHandler {  // 全局流量整形，也就是说它限制了全局的带宽，无论开启了几个channel
     /**
-     * All queues per channel
-     */
+     * All queues per channel 存储当前应用所有的 Channel，key为 Channel 的 hashCode；value是一个 PerChannel 对象。
+     */ // PerChannel 对象中维护有该 Channel 的待发送数据的消息队列（ArrayDeque<ToSend> messagesQueue）
     private final ConcurrentMap<Integer, PerChannel> channelQueues = PlatformDependent.newConcurrentHashMap();
 
     /**
@@ -94,7 +94,7 @@ public class GlobalTrafficShapingHandler extends AbstractTrafficShapingHandler {
     long maxGlobalWriteSize = DEFAULT_MAX_SIZE * 100; // default 400MB
 
     private static final class PerChannel {
-        ArrayDeque<ToSend> messagesQueue;
+        ArrayDeque<ToSend> messagesQueue; // messagesQueue 是一个ArrayDeque队列，我们总是从队列尾部插入。然后从队列的头获取消息来依次发送，这就保证了消息的有序性
         long queueSize;
         long lastWriteTimestamp;
         long lastReadTimestamp;
@@ -314,10 +314,10 @@ public class GlobalTrafficShapingHandler extends AbstractTrafficShapingHandler {
     }
 
     private static final class ToSend {
-        final long relativeTimeAction;
-        final Object toSend;
-        final long size;
-        final ChannelPromise promise;
+        final long relativeTimeAction; // 发送的相对延迟时间
+        final Object toSend; // 待发送的数据对象
+        final long size; // 消息数据的大小
+        final ChannelPromise promise; // 异步写操作的 promise
 
         private ToSend(final long delay, final Object toSend, final long size, final ChannelPromise promise) {
             relativeTimeAction = delay;
@@ -344,26 +344,26 @@ public class GlobalTrafficShapingHandler extends AbstractTrafficShapingHandler {
         boolean globalSizeExceeded = false;
         // write operations need synchronization
         synchronized (perChannel) {
-            if (writedelay == 0 && perChannel.messagesQueue.isEmpty()) {
+            if (writedelay == 0 && perChannel.messagesQueue.isEmpty()) { // 写延迟为0，且当前该 Channel 的 messagesQueue 为空（说明，在此消息前没有待发送的消息了）
                 trafficCounter.bytesRealWriteFlowControl(size);
-                ctx.write(msg, promise);
+                ctx.write(msg, promise); // 直接发送该消息包。并返回
                 perChannel.lastWriteTimestamp = now;
                 return;
             }
             if (delay > maxTime && now + delay - perChannel.lastWriteTimestamp > maxTime) {
-                delay = maxTime;
+                delay = maxTime; // 延迟发送时间
             }
-            newToSend = new ToSend(delay + now, msg, size, promise);
-            perChannel.messagesQueue.addLast(newToSend);
+            newToSend = new ToSend(delay + now, msg, size, promise); // 将待发送的数据封装成 ToSend 对象
+            perChannel.messagesQueue.addLast(newToSend); // 放入PerChannel的消息队列中（messagesQueue）
             perChannel.queueSize += size;
             queuesSize.addAndGet(size);
             checkWriteSuspend(ctx, delay, perChannel.queueSize);
-            if (queuesSize.get() > maxGlobalWriteSize) {
-                globalSizeExceeded = true;
+            if (queuesSize.get() > maxGlobalWriteSize) { // 所有待发送的数据大小（这里指所有Channel累积的待发送的数据大小）大于了maxGlobalWriteSize（默认400M）
+                globalSizeExceeded = true; // 标识 globalSizeExceeded 为 true
             }
         }
         if (globalSizeExceeded) {
-            setUserDefinedWritability(ctx, false);
+            setUserDefinedWritability(ctx, false); // 将 ChannelOutboundBuffer 中的 unwritable 属性值相应的标志位置位
         }
         final long futureNow = newToSend.relativeTimeAction;
         final PerChannel forSchedule = perChannel;
@@ -372,20 +372,20 @@ public class GlobalTrafficShapingHandler extends AbstractTrafficShapingHandler {
             public void run() {
                 sendAllValid(ctx, forSchedule, futureNow);
             }
-        }, delay, TimeUnit.MILLISECONDS);
+        }, delay, TimeUnit.MILLISECONDS); // 根据指定的延迟时间 delay，将 sendAllValid(ctx, forSchedule, futureNow); 操作封装成一个任务提交至 executor 的定时周期任务队列中
     }
-
+    // 遍历该 Channel 中待发送的消息队列 messagesQueue，依次取出 perChannel.messagesQueue 中的消息包，将满足发送条件（即，延迟发送的时间已经到了）的消息发送给到 ChannelPipeline 中的下一个 ChannelOutboundHandler
     private void sendAllValid(final ChannelHandlerContext ctx, final PerChannel perChannel, final long now) {
         // write operations need synchronization
         synchronized (perChannel) {
             ToSend newToSend = perChannel.messagesQueue.pollFirst();
-            for (; newToSend != null; newToSend = perChannel.messagesQueue.pollFirst()) {
-                if (newToSend.relativeTimeAction <= now) {
+            for (; newToSend != null; newToSend = perChannel.messagesQueue.pollFirst()) { // 遍历该 Channel 中待发送的消息队列 messagesQueue
+                if (newToSend.relativeTimeAction <= now) { // 延迟发送的时间已经到了
                     long size = newToSend.size;
                     trafficCounter.bytesRealWriteFlowControl(size);
-                    perChannel.queueSize -= size;
+                    perChannel.queueSize -= size; // 将 perChannel.queueSize（当前Channel待发送的总数据大小）和 queuesSize（所有Channel待发送的总数据大小）减小相应的值（即，被发送出去的这个数据包的大小）
                     queuesSize.addAndGet(-size);
-                    ctx.write(newToSend.toSend, newToSend.promise);
+                    ctx.write(newToSend.toSend, newToSend.promise); // 送给到 ChannelPipeline 中的下一个 ChannelOutboundHandler
                     perChannel.lastWriteTimestamp = now;
                 } else {
                     perChannel.messagesQueue.addFirst(newToSend);
@@ -393,7 +393,7 @@ public class GlobalTrafficShapingHandler extends AbstractTrafficShapingHandler {
                 }
             }
             if (perChannel.messagesQueue.isEmpty()) {
-                releaseWriteSuspended(ctx);
+                releaseWriteSuspended(ctx); // 调用 releaseWriteSuspended(ctx); 来释放写暂停
             }
         }
         ctx.flush();
